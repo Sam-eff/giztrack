@@ -56,7 +56,23 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   if (url.pathname.startsWith("/api/")) {
-    event.respondWith(fetch(request));
+    event.respondWith(
+      fetch(request).catch(() =>
+        new Response(
+          JSON.stringify({
+            detail: "Network error. The API server could not be reached.",
+            error: "network_unavailable",
+          }),
+          {
+            status: 503,
+            headers: {
+              "Content-Type": "application/json",
+              "Cache-Control": "no-store",
+            },
+          }
+        )
+      )
+    );
     return;
   }
 

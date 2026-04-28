@@ -86,6 +86,65 @@ class AuthSecurityTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("message", response.data)
 
+    @override_settings(FRONTEND_URL="https://app.giztrack.test")
+    @patch("apps.accounts.views.send_mail")
+    def test_register_sends_welcome_email(self, mock_send_mail):
+        csrf_client = APIClient(enforce_csrf_checks=True)
+        csrf_client.get("/api/v1/auth/csrf/")
+        csrf_token = csrf_client.cookies.get("csrftoken")
+
+        response = csrf_client.post(
+            "/api/v1/auth/register/",
+            {
+                "shop_name": "Fresh Gizmos",
+                "shop_phone": "08012345678",
+                "shop_address": "12 Lagos Street",
+                "first_name": "Samuel",
+                "last_name": "Owner",
+                "email": "newowner@example.com",
+                "password": "StrongPass123!",
+                "confirm_password": "StrongPass123!",
+            },
+            format="json",
+            HTTP_X_CSRFTOKEN=csrf_token.value,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["user"]["email"], "newowner@example.com")
+        mock_send_mail.assert_called_once()
+
+        _, kwargs = mock_send_mail.call_args
+        self.assertEqual(kwargs["recipient_list"], ["newowner@example.com"])
+        self.assertEqual(kwargs["from_email"], settings.DEFAULT_FROM_EMAIL)
+        self.assertFalse(kwargs["fail_silently"])
+        self.assertIn("Welcome to Giztrack, Fresh Gizmos", kwargs["subject"])
+        self.assertIn("https://app.giztrack.test/login", kwargs["message"])
+
+    @patch("apps.accounts.views.send_mail", side_effect=Exception("smtp down"))
+    def test_register_returns_201_even_if_welcome_email_fails(self, _mock_send_mail):
+        csrf_client = APIClient(enforce_csrf_checks=True)
+        csrf_client.get("/api/v1/auth/csrf/")
+        csrf_token = csrf_client.cookies.get("csrftoken")
+
+        response = csrf_client.post(
+            "/api/v1/auth/register/",
+            {
+                "shop_name": "Fallback Repairs",
+                "shop_phone": "08012345679",
+                "first_name": "Amina",
+                "last_name": "Owner",
+                "email": "owner-fallback@example.com",
+                "password": "StrongPass123!",
+                "confirm_password": "StrongPass123!",
+            },
+            format="json",
+            HTTP_X_CSRFTOKEN=csrf_token.value,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(CustomUser.objects.filter(email="owner-fallback@example.com").exists())
+        self.assertTrue(Shop.objects.filter(email="owner-fallback@example.com").exists())
+
     def test_reset_password_accepts_fresh_valid_token(self):
         csrf_client = APIClient(enforce_csrf_checks=True)
         csrf_client.get("/api/v1/auth/csrf/")

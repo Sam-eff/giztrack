@@ -46,7 +46,7 @@ app_port: 7860
 | **Repair State Machine** | Enforced transitions: `Received → Diagnosing → Waiting Parts → Fixed → Collected` |
 | **Price Snapshotting** | Sale items and repair parts snapshot prices at time of transaction |
 | **Stock Audit Trail** | `StockLog` records every inventory movement with reason and timestamp |
-| **Async Tasks** | Celery handles low-stock alerts, subscription reminders, and daily summaries |
+| **Async Tasks** | Django Q2 handles low-stock alerts, subscription reminders, and daily summaries |
 | **Dark Mode** | Full dark/light theme toggle stored locally |
 | **Responsive UI** | Mobile-first design; tabs, overlays, and navigation all mobile-optimized |
 
@@ -64,8 +64,7 @@ app_port: 7860
 | **django-cors-headers** | Latest | CORS support for SPA |
 | **django-environ** | Latest | `.env` file management |
 | **django-jazzmin** | Latest | Custom Django admin UI |
-| **Celery** | Latest | Async task queue |
-| **Redis** | 7 | Message broker for Celery |
+| **Django Q2** | Latest | Async task queue |
 | **PostgreSQL** | 16 | Production database |
 | **SQLite** | — | Development database |
 | **Gunicorn** | Latest | WSGI server for production |
@@ -91,6 +90,15 @@ app_port: 7860
 | **Docker Compose** | Multi-service orchestration |
 | **Paystack** | Payment gateway (NGN subscriptions) |
 
+## Current Focus
+
+This repository is currently optimized for local Docker development first.
+
+- Primary app URL: `http://localhost/`
+- Fast dev mode URL: `http://localhost:5173/`
+- Old Vercel/Hugging Face deployment glue has been retired from the active workflow
+- Future production target: Cloudflare + Railway after the local stack is stable
+
 ## Local Docker Modes
 
 Giztrack now has two separate local Docker workflows:
@@ -112,6 +120,3 @@ Use the production-like stack when you want to test the built app exactly as Doc
 ```bash
 docker compose up --build
 ```
-
-
-Built with ❤️ for Nigerian tech repair shop owners.*

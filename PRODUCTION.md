@@ -1,11 +1,18 @@
 # Giztrack Production Rollout
 
-This file is the practical rollout guide for moving Giztrack from local/staging to production.
+This file is a placeholder rollout guide while the project is being stabilized locally with Docker first.
+
+The current production direction is:
+
+- Frontend and edge concerns on Cloudflare
+- Backend/runtime on Railway
+
+Do not treat older Vercel or Hugging Face deploy glue as active infrastructure.
 
 ## 1. Minimum Production Services
 
 - PostgreSQL for application data
-- Redis for Celery and async jobs
+- Django Q2 worker process for async jobs
 - S3-compatible object storage for media/uploads
 - Sentry for error monitoring
 - Transactional email provider such as Postmark, Resend, Brevo, or Amazon SES
@@ -13,8 +20,8 @@ This file is the practical rollout guide for moving Giztrack from local/staging 
 
 ## 2. Recommended Environments
 
-- Local: current developer setup
-- Staging: mirrors production as closely as possible
+- Local Docker: current developer setup and source of truth
+- Staging: Railway/Cloudflare mirror once local Docker is stable
 - Production: real customer-facing environment
 
 Do not deploy directly from local development to production without validating on staging first.

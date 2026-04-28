@@ -33,6 +33,7 @@ venv/
 .venv/
 env/
 
+
 # ── Database ──────────────────────────────────────────────────────────────────
 backend/db.sqlite3
 *.sqlite3
@@ -65,3 +66,5 @@ frontend/.gitignore
 # ── Test / Debug scripts ──────────────────────────────────────────────────────
 test_*.py
 test_*.json
+
+.md/

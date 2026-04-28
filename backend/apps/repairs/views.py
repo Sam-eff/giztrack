@@ -103,8 +103,14 @@ class RepairTicketViewSet(ShopScopedMixin, viewsets.ModelViewSet):
 
         # Notify customer when repair is ready for pickup
         if new_status == RepairTicket.Status.FIXED:
-            from apps.notifications.tasks import notify_repair_ready
-            notify_repair_ready.delay(ticket.id)
+            from django_q.tasks import async_task
+
+            transaction.on_commit(
+                lambda: async_task(
+                    "apps.notifications.tasks.notify_repair_ready",
+                    ticket.id,
+                )
+            )
 
         return Response({
             "message": f"Status updated to '{ticket.get_status_display()}'.",

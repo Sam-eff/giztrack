@@ -15,10 +15,10 @@ python manage.py migrate --noinput
 python manage.py collectstatic --noinput
 
 if [ "$ENABLE_BACKGROUND_WORKERS" = "true" ]; then
-    echo "Background workers enabled; starting Gunicorn, Celery worker, and Celery beat..."
+    echo "Background workers enabled; starting Gunicorn + Django Q2 cluster..."
+    python manage.py setup_q_schedules
     gunicorn config.wsgi:application --bind 0.0.0.0:${PORT} --workers 2 &
-    celery -A config worker -l info &
-    exec celery -A config beat -l info
+    exec python manage.py qcluster
 fi
 
 echo "Background workers disabled; starting Gunicorn only..."

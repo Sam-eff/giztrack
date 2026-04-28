@@ -1,4 +1,1 @@
-# This makes Celery start automatically when Django starts
-from .celery import app as celery_app
-
-__all__ = ["celery_app"]
+# Django Q2 handles task processing — no app-level init needed.

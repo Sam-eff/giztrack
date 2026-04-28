@@ -104,6 +104,35 @@ def enforce_password_policy(password, user=None):
     return None
 
 
+def _send_signup_welcome_email(shop, user):
+    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173").rstrip("/")
+    login_url = f"{frontend_url}/login"
+
+    try:
+        send_mail(
+            subject=f"Welcome to Giztrack, {shop.name}",
+            message=(
+                f"Hi {user.first_name},\n\n"
+                f"Your shop account for {shop.name} has been created successfully.\n"
+                f"You can sign in anytime at:\n"
+                f"{login_url}\n\n"
+                f"Your {shop.TRIAL_DURATION_DAYS}-day free trial is already active.\n"
+                f"Registered email: {user.email}\n\n"
+                f"If you did not create this account, please contact support immediately.\n\n"
+                f"— Giztrack"
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+    except Exception:
+        logger.exception(
+            "Signup welcome email failed for user_id=%s shop_id=%s",
+            user.pk,
+            shop.pk,
+        )
+
+
 # ─── Custom JWT claims ────────────────────────────────────────────────────────
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """Adds role and shop_id to the JWT payload for easy frontend use."""
@@ -153,6 +182,7 @@ class ShopRegisterView(APIView):
         serializer = ShopRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         shop, user = serializer.save()
+        _send_signup_welcome_email(shop, user)
 
         refresh = RefreshToken.for_user(user)
         response = Response(

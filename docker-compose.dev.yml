@@ -15,16 +15,6 @@ services:
       retries: 5
       start_period: 10s
 
-  redis:
-    image: redis:7-alpine
-    restart: always
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
-
   backend:
     build:
       context: ./backend
@@ -32,6 +22,7 @@ services:
     image: techshopmananger-backend-dev
     command: >
       sh -c "python manage.py migrate &&
+             python manage.py setup_q_schedules &&
              python manage.py runserver 0.0.0.0:8000"
     volumes:
       - ./backend:/app
@@ -43,7 +34,6 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings
       - DATABASE_URL=postgres://techshop_user:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/techshop_db
-      - REDIS_URL=redis://redis:6379/0
       - CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
       - CSRF_TRUSTED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000
       - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,backend
@@ -55,11 +45,10 @@ services:
       start_period: 30s
     depends_on:
       - db
-      - redis
 
-  celery:
+  qcluster:
     image: techshopmananger-backend-dev
-    command: celery -A config worker -l info
+    command: python manage.py qcluster
     volumes:
       - ./backend:/app
     env_file:
@@ -67,25 +56,8 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings
       - DATABASE_URL=postgres://techshop_user:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/techshop_db
-      - REDIS_URL=redis://redis:6379/0
     depends_on:
       - backend
-      - redis
-
-  celery-beat:
-    image: techshopmananger-backend-dev
-    command: celery -A config beat -l info
-    volumes:
-      - ./backend:/app
-    env_file:
-      - ./backend/.env
-    environment:
-      - DJANGO_SETTINGS_MODULE=config.settings
-      - DATABASE_URL=postgres://techshop_user:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/techshop_db
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      - backend
-      - redis
 
   frontend:
     build:

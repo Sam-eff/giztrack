@@ -17,18 +17,6 @@ services:
     # No host port binding — DB is only accessible within Docker internal network
     # Expose 5432 temporarily for local dev if needed: ports: ["127.0.0.1:5432:5432"]
 
-  redis:
-    image: redis:7-alpine
-    restart: always
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 5s
-    # No host port binding — Redis is only accessible within Docker internal network
-    # Expose 6379 temporarily for local dev if needed: ports: ["127.0.0.1:6379:6379"]
-
   backend:
     build:
       context: ./backend
@@ -37,6 +25,7 @@ services:
     command: >
       sh -c "python manage.py collectstatic --noinput &&
              python manage.py migrate &&
+             python manage.py setup_q_schedules &&
              gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
     volumes:
       - ./backend:/app
@@ -49,7 +38,6 @@ services:
       - SENTRY_DSN=${SENTRY_BACKEND_DSN}
       - DJANGO_SETTINGS_MODULE=config.settings
       - DATABASE_URL=postgres://techshop_user:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/techshop_db
-      - REDIS_URL=redis://redis:6379/0
       - CORS_ALLOWED_ORIGINS=http://localhost:5173
       - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,backend
     healthcheck:
@@ -60,37 +48,21 @@ services:
       start_period: 30s
     depends_on:
       - db
-      - redis
 
-  celery:
+  qcluster:
     image: techshopmananger-backend
-    command: celery -A config worker -l info
+    command: python manage.py qcluster
+    restart: always
     volumes:
       - ./backend:/app
     env_file:
       - ./backend/.env
     environment:
+      - SENTRY_DSN=${SENTRY_BACKEND_DSN}
       - DJANGO_SETTINGS_MODULE=config.settings
       - DATABASE_URL=postgres://techshop_user:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/techshop_db
-      - REDIS_URL=redis://redis:6379/0
     depends_on:
       - backend
-      - redis
-
-  celery-beat:
-    image: techshopmananger-backend
-    command: celery -A config beat -l info
-    volumes:
-      - ./backend:/app
-    env_file:
-      - ./backend/.env
-    environment:
-      - DJANGO_SETTINGS_MODULE=config.settings
-      - DATABASE_URL=postgres://techshop_user:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/techshop_db
-      - REDIS_URL=redis://redis:6379/0
-    depends_on:
-      - backend
-      - redis
 
   frontend:
     build:

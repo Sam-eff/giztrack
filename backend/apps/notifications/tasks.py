@@ -1,12 +1,10 @@
-from celery import shared_task
 from django.core.mail import send_mail
 from django.conf import settings
 from django.db.models import F
 from django.utils import timezone
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def notify_repair_ready(self, ticket_id):
+def notify_repair_ready(ticket_id):
     """
     Sends an email + SMS to the customer when their repair is marked as Fixed.
     SMS is only sent if:
@@ -17,52 +15,44 @@ def notify_repair_ready(self, ticket_id):
     from apps.repairs.models import RepairTicket
     from .messages import repair_ready_subject, repair_ready_body
 
-    try:
-        ticket = RepairTicket.objects.select_related(
-            "customer", "shop"
-        ).get(id=ticket_id)
+    ticket = RepairTicket.objects.select_related(
+        "customer", "shop"
+    ).get(id=ticket_id)
 
-        # ── Email ─────────────────────────────────────────────────────────────
-        if ticket.customer and ticket.customer.email:
-            send_mail(
-                subject=repair_ready_subject(),
-                message=repair_ready_body(
-                    customer_name=ticket.customer.name,
-                    device_model=ticket.device_model,
-                    shop_name=ticket.shop.name,
-                    shop_phone=ticket.shop.phone,
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[ticket.customer.email],
-                fail_silently=False,
+    # ── Email ─────────────────────────────────────────────────────────────
+    if ticket.customer and ticket.customer.email:
+        send_mail(
+            subject=repair_ready_subject(),
+            message=repair_ready_body(
+                customer_name=ticket.customer.name,
+                device_model=ticket.device_model,
+                shop_name=ticket.shop.name,
+                shop_phone=ticket.shop.phone,
+            ),
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[ticket.customer.email],
+            fail_silently=False,
+        )
+
+    # ── SMS (Pro access only) ─────────────────────────────────────────────
+    if ticket.shop.enable_sms_notifications:
+        if ticket.shop.has_pro_access and ticket.customer and ticket.customer.phone:
+            notification_message = (
+                f"Hello {ticket.customer.name},\n"
+                f"Your {ticket.device_model} is ready for pickup at {ticket.shop.name}.\n"
+                f"Call {ticket.shop.phone} for any questions."
             )
 
-        # ── SMS (Pro access only) ─────────────────────────────────────────────
-        if ticket.shop.enable_sms_notifications:
-            if ticket.shop.has_pro_access and ticket.customer and ticket.customer.phone:
-                notification_message = (
-                    f"Hello {ticket.customer.name},\n"
-                    f"Your {ticket.device_model} is ready for pickup at {ticket.shop.name}.\n"
-                    f"Call {ticket.shop.phone} for any questions."
-                )
+            from utils.sms import send_sms
+            send_sms(
+                to_number=ticket.customer.phone,
+                message=notification_message,
+            )
 
-                from utils.sms import send_sms
-                send_sms(
-                    to_number=ticket.customer.phone,
-                    message=notification_message,
-                )
-
-        return f"Repair notifications sent for ticket #{ticket_id}"
-
-    except RepairTicket.DoesNotExist:
-        return f"Ticket #{ticket_id} not found"
-    except Exception as exc:
-        raise self.retry(exc=exc)
+    return f"Repair notifications sent for ticket #{ticket_id}"
 
 
-
-@shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def notify_low_stock(self, product_id):
+def notify_low_stock(product_id):
     """
     Sends a low stock alert to the shop owner.
     Triggered by the Product post_save signal in inventory/signals.py
@@ -71,38 +61,31 @@ def notify_low_stock(self, product_id):
     from apps.accounts.models import CustomUser, Role
     from .messages import low_stock_subject, low_stock_body
 
-    try:
-        product = Product.objects.select_related("shop").get(id=product_id)
-        shop = product.shop
+    product = Product.objects.select_related("shop").get(id=product_id)
+    shop = product.shop
 
-        # Get the admin user's email
-        admin = CustomUser.objects.filter(shop=shop, role=Role.ADMIN).first()
-        if not admin or not admin.email:
-            return f"Skipped — no admin email for shop {shop.name}"
+    # Get the admin user's email
+    admin = CustomUser.objects.filter(shop=shop, role=Role.ADMIN).first()
+    if not admin or not admin.email:
+        return f"Skipped — no admin email for shop {shop.name}"
 
-        send_mail(
-            subject=low_stock_subject(shop.name),
-            message=low_stock_body(
-                products=[{
-                    "name": product.name,
-                    "quantity": product.quantity,
-                    "threshold": product.low_stock_threshold,
-                }],
-                shop_name=shop.name,
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[admin.email],
-            fail_silently=False,
-        )
-        return f"Low stock alert sent for product #{product_id}"
-
-    except Product.DoesNotExist:
-        return f"Product #{product_id} not found"
-    except Exception as exc:
-        raise self.retry(exc=exc)
+    send_mail(
+        subject=low_stock_subject(shop.name),
+        message=low_stock_body(
+            products=[{
+                "name": product.name,
+                "quantity": product.quantity,
+                "threshold": product.low_stock_threshold,
+            }],
+            shop_name=shop.name,
+        ),
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[admin.email],
+        fail_silently=False,
+    )
+    return f"Low stock alert sent for product #{product_id}"
 
 
-@shared_task
 def notify_expiring_subscriptions():
     """
     Periodic task — runs daily.
@@ -142,7 +125,6 @@ def notify_expiring_subscriptions():
     return f"Expiry reminders sent for {warning_days}-day windows"
 
 
-@shared_task
 def send_daily_summary():
     """
     Periodic task — runs every morning.

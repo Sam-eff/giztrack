@@ -22,7 +22,6 @@ from django.core.exceptions import ImproperlyConfigured
 
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
-from sentry_sdk.integrations.celery import CeleryIntegration
 
 try:
     import whitenoise  # noqa: F401
@@ -36,7 +35,7 @@ SENTRY_DSN = os.environ.get("SENTRY_DSN")
 if SENTRY_DSN:
     sentry_sdk.init(
         dsn=SENTRY_DSN,
-        integrations=[DjangoIntegration(), CeleryIntegration()],
+        integrations=[DjangoIntegration()],
         traces_sample_rate=0.2,   # 20% of transactions — reduce noise
         send_default_pii=False    # Never send emails, IPs, cookies to Sentry (NDPR)
     )
@@ -91,6 +90,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'rest_framework_simplejwt.token_blacklist',
+    'django_q',
     
     # Local apps
     "apps.accounts",
@@ -255,18 +255,22 @@ SESSION_COOKIE_SECURE = env("SESSION_COOKIE_SECURE", default="")
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 CORS_ALLOW_CREDENTIALS = True
 
-#  Redis / Celery
-
-REDIS_URL = env("REDIS_URL", default="redis://localhost:6379/0")
-CELERY_BROKER_URL = env('REDIS_URL')
-CELERY_RESULT_BACKEND = env('REDIS_URL')
-
-# Only enable Redis SSL options when the configured URL actually uses rediss://.
-# Local Docker and most local dev setups use plain redis:// and will crash if SSL
-# parameters are forced onto a non-SSL connection.
-if REDIS_URL.startswith("rediss://"):
-    CELERY_REDIS_BACKEND_USE_SSL = {"ssl_cert_reqs": "none"}
-    CELERY_BROKER_USE_SSL = {"ssl_cert_reqs": "none"}
+# ── Django Q2 (background tasks) ──────────────────────────────────────────────
+# Uses the Django ORM as the message broker — no Redis required.
+# Switch to Redis broker later for higher throughput:
+#   Q_CLUSTER = { ... "redis": env("REDIS_URL", default="redis://localhost:6379/0") }
+Q_CLUSTER = {
+    "name": env("Q_CLUSTER_NAME", default="Giztrack"),
+    "workers": env.int("Q_CLUSTER_WORKERS", default=2),
+    "recycle": env.int("Q_CLUSTER_RECYCLE", default=500),     # Restart worker after N tasks
+    "timeout": env.int("Q_CLUSTER_TIMEOUT", default=120),     # Task timeout in seconds
+    "retry": env.int("Q_CLUSTER_RETRY", default=180),         # Retry failed tasks after N seconds
+    "queue_limit": env.int("Q_CLUSTER_QUEUE_LIMIT", default=50),
+    "bulk": env.int("Q_CLUSTER_BULK", default=10),
+    "orm": env("Q_CLUSTER_ORM", default="default"),           # Use Django ORM as broker
+    "catch_up": env.bool("Q_CLUSTER_CATCH_UP", default=False),
+    "label": "Django Q2",
+}
 
 #  Paystack
 
@@ -277,27 +281,6 @@ PAYSTACK_WEBHOOK_URL = env("PAYSTACK_WEBHOOK_URL", default="")
 # App URLs — used in email links and Paystack callback redirect
 BACKEND_URL = env("BACKEND_URL", default="http://127.0.0.1:8000")
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
-
-# ── Celery ────────────────────────────────────────────────────────────────────
-CELERY_ACCEPT_CONTENT = ["json"]
-CELERY_TASK_SERIALIZER = "json"
-CELERY_RESULT_SERIALIZER = "json"
-CELERY_TIMEZONE = "Africa/Lagos"
-
-from celery.schedules import crontab
-
-CELERY_BEAT_SCHEDULE = {
-    # Check for expiring subscriptions every day at 9am Lagos time
-    "notify-expiring-subscriptions": {
-        "task": "apps.notifications.tasks.notify_expiring_subscriptions",
-        "schedule": crontab(hour=9, minute=0),
-    },
-    # Send daily sales summary every morning at 8am
-    "send-daily-summary": {
-        "task": "apps.notifications.tasks.send_daily_summary",
-        "schedule": crontab(hour=8, minute=0),
-    },
-}
 
 # ── Email (console in dev, SMTP in prod) ─────────────────────────────────────
 EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
