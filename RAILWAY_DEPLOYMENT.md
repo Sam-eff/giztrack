@@ -38,11 +38,11 @@ Attach the same Railway PostgreSQL database to both services.
 Use these commands in Railway:
 
 - Release / predeploy command:
-  `sh backend/scripts/railway-release.sh`
+  `sh scripts/railway-release.sh`
 - Web start command:
-  `sh backend/scripts/railway-web.sh`
+  `sh scripts/railway-web.sh`
 - Worker start command:
-  `sh backend/scripts/railway-worker.sh`
+  `sh scripts/railway-worker.sh`
 
 ## Backend environment variables
 
@@ -58,6 +58,8 @@ Important values:
 - `CORS_ALLOWED_ORIGINS=https://app.your-domain.com`
 - `CSRF_TRUSTED_ORIGINS=https://app.your-domain.com,https://api.your-domain.com`
 - `AUTH_COOKIE_DOMAIN=.your-domain.com`
+- `CSRF_COOKIE_DOMAIN=.your-domain.com`
+- `SESSION_COOKIE_DOMAIN=.your-domain.com`
 - `USE_HTTPS=True`
 - `EMAIL_HOST=smtp.resend.com`
 - `EMAIL_HOST_USER=resend`
