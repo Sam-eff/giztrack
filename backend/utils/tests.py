@@ -8,6 +8,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from utils.cloudinary_storage import CloudinaryMediaStorage
 from utils.email_backends import ResendEmailBackend, ResendEmailError
+from utils.staticfiles import TolerantCompressedManifestStaticFilesStorage
 
 
 class HealthcheckTests(TestCase):
@@ -143,3 +144,17 @@ class CloudinaryMediaStorageTests(SimpleTestCase):
         self.assertEqual(kwargs["timeout"], 12)
         self.assertEqual(url, "https://res.cloudinary.com/demo-cloud/image/upload/giztrack/file")
         destroy_mock.assert_called_once_with(saved_name, resource_type="image", invalidate=True)
+
+
+class StaticFilesStorageTests(SimpleTestCase):
+    def test_staticfiles_storage_does_not_rewrite_sourcemap_references(self):
+        patterns = TolerantCompressedManifestStaticFilesStorage.patterns
+        pattern_sources = [
+            pattern[0] if isinstance(pattern, (tuple, list)) else pattern
+            for _extension, pattern_group in patterns
+            for pattern in pattern_group
+        ]
+
+        self.assertFalse(
+            any("sourceMappingURL" in pattern for pattern in pattern_sources)
+        )
