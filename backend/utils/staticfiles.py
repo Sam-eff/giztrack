@@ -28,4 +28,5 @@ class TolerantCompressedManifestStaticFilesStorage(CompressedManifestStaticFiles
     missing maps should not block production deployment.
     """
 
+    manifest_strict = False
     patterns = _drop_sourcemap_patterns(CompressedManifestStaticFilesStorage.patterns)
