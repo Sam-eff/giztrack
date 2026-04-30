@@ -64,6 +64,12 @@ Important values:
 - `EMAIL_BACKEND=utils.email_backends.ResendEmailBackend`
 - `RESEND_API_KEY=<your resend api key>`
 - `DEFAULT_FROM_EMAIL=Giztrack <noreply@your-domain.com>`
+- `USE_CLOUDINARY=True`
+- `CLOUDINARY_CLOUD_NAME=<your Cloudinary cloud name>`
+- `CLOUDINARY_API_KEY=<your Cloudinary API key>`
+- `CLOUDINARY_API_SECRET=<your Cloudinary API secret>`
+- `CLOUDINARY_FOLDER=giztrack`
+- `SERVE_MEDIA=False`
 
 Budget-first Q2 defaults:
 

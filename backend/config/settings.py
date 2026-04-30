@@ -16,6 +16,7 @@ import sys
 from os import environ
 from pathlib import Path
 from datetime import timedelta
+from urllib.parse import urlparse
 
 import environ
 from django.core.exceptions import ImproperlyConfigured
@@ -51,6 +52,12 @@ if default_env_file.exists():
 local_env_file = BASE_DIR / ".env.local"
 if local_env_file.exists():
     environ.Env.read_env(local_env_file, overwrite=True)
+
+
+def _hostname_from_url(value):
+    if not value:
+        return ""
+    return urlparse(value).hostname or ""
 
 
 
@@ -194,6 +201,31 @@ STATICFILES_STORAGE = (
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# User-uploaded media storage. Local/dev keeps files on disk; Railway/production
+# can switch to Cloudinary by setting Cloudinary credentials.
+CLOUDINARY_URL = env("CLOUDINARY_URL", default="")
+CLOUDINARY_CLOUD_NAME = env("CLOUDINARY_CLOUD_NAME", default=_hostname_from_url(CLOUDINARY_URL))
+CLOUDINARY_API_KEY = env("CLOUDINARY_API_KEY", default="")
+CLOUDINARY_API_SECRET = env("CLOUDINARY_API_SECRET", default="")
+CLOUDINARY_FOLDER = env("CLOUDINARY_FOLDER", default="giztrack")
+CLOUDINARY_TIMEOUT_SECONDS = env.int("CLOUDINARY_TIMEOUT_SECONDS", default=20)
+_CLOUDINARY_CONFIGURED = bool(
+    CLOUDINARY_URL
+    or (CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET)
+)
+USE_CLOUDINARY = env.bool("USE_CLOUDINARY", default=_CLOUDINARY_CONFIGURED)
+
+STORAGES = {
+    "default": {
+        "BACKEND": (
+            "utils.cloudinary_storage.CloudinaryMediaStorage"
+            if USE_CLOUDINARY
+            else "django.core.files.storage.FileSystemStorage"
+        ),
+    },
+    "staticfiles": {"BACKEND": STATICFILES_STORAGE},
+}
+
 # Authentication
 
 AUTH_USER_MODEL = "accounts.CustomUser"
@@ -326,7 +358,9 @@ USE_HTTPS = env.bool("USE_HTTPS", default=False)
 # Default to Django-served media only in DEBUG. In non-debug deployments,
 # enable this explicitly for local Docker or single-host setups that do not
 # have Nginx/object storage handling media yet.
-SERVE_MEDIA = env.bool("SERVE_MEDIA", default=DEBUG)
+SERVE_MEDIA = env.bool("SERVE_MEDIA", default=DEBUG and not USE_CLOUDINARY)
+if USE_CLOUDINARY:
+    SERVE_MEDIA = False
 if not CSRF_TRUSTED_ORIGINS:
     csrf_defaults = {
         FRONTEND_URL.rstrip("/"),
@@ -383,5 +417,7 @@ CSP_DEFAULT_SRC = ("'self'",)
 CSP_SCRIPT_SRC  = ("'self'",)
 CSP_STYLE_SRC   = ("'self'", "'unsafe-inline'")  # needed for inline styles common in React
 CSP_IMG_SRC     = ("'self'", "data:", "blob:")      # local images + data URIs
+if USE_CLOUDINARY and CLOUDINARY_CLOUD_NAME:
+    CSP_IMG_SRC += (f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}",)
 CSP_FONT_SRC    = ("'self'", "https://fonts.gstatic.com")
 CSP_CONNECT_SRC = ("'self'",)  # API calls — add your prod domain here when deploying

@@ -1,8 +1,12 @@
-from unittest.mock import patch
+import sys
+from types import ModuleType, SimpleNamespace
+from unittest.mock import Mock, patch
 
+from django.core.files.base import ContentFile
 from django.core.mail import EmailMessage, EmailMultiAlternatives
 from django.test import SimpleTestCase, TestCase, override_settings
 
+from utils.cloudinary_storage import CloudinaryMediaStorage
 from utils.email_backends import ResendEmailBackend, ResendEmailError
 
 
@@ -84,3 +88,58 @@ class ResendEmailBackendTests(SimpleTestCase):
 
         with self.assertRaisesMessage(ResendEmailError, "HTTP 422"):
             ResendEmailBackend().send_messages([message])
+
+
+class CloudinaryMediaStorageTests(SimpleTestCase):
+    @override_settings(
+        CLOUDINARY_CLOUD_NAME="demo-cloud",
+        CLOUDINARY_API_KEY="api-key",
+        CLOUDINARY_API_SECRET="api-secret",
+        CLOUDINARY_FOLDER="giztrack",
+        CLOUDINARY_TIMEOUT_SECONDS=12,
+    )
+    def test_save_uploads_to_cloudinary_folder(self):
+        upload_mock = Mock(return_value={"public_id": "unused"})
+        destroy_mock = Mock(return_value={"result": "ok"})
+
+        cloudinary_module = ModuleType("cloudinary")
+        cloudinary_module.__path__ = []
+        cloudinary_module.config = Mock(return_value=SimpleNamespace(cloud_name="demo-cloud"))
+        uploader_module = ModuleType("cloudinary.uploader")
+        uploader_module.upload = upload_mock
+        uploader_module.destroy = destroy_mock
+        utils_module = ModuleType("cloudinary.utils")
+        utils_module.cloudinary_url = Mock(
+            return_value=("https://res.cloudinary.com/demo-cloud/image/upload/giztrack/file", {})
+        )
+        cloudinary_module.uploader = uploader_module
+        cloudinary_module.utils = utils_module
+
+        with patch.dict(
+            sys.modules,
+            {
+                "cloudinary": cloudinary_module,
+                "cloudinary.uploader": uploader_module,
+                "cloudinary.utils": utils_module,
+            },
+        ):
+            storage = CloudinaryMediaStorage()
+            saved_name = storage.save(
+                "inventory/products/My Phone.JPG",
+                ContentFile(b"fake image data"),
+            )
+            url = storage.url(saved_name)
+            storage.delete(saved_name)
+
+        self.assertRegex(
+            saved_name,
+            r"^giztrack/inventory/products/my_phone-[a-f0-9]{12}$",
+        )
+        upload_mock.assert_called_once()
+        _, kwargs = upload_mock.call_args
+        self.assertEqual(kwargs["public_id"], saved_name)
+        self.assertEqual(kwargs["resource_type"], "image")
+        self.assertFalse(kwargs["overwrite"])
+        self.assertEqual(kwargs["timeout"], 12)
+        self.assertEqual(url, "https://res.cloudinary.com/demo-cloud/image/upload/giztrack/file")
+        destroy_mock.assert_called_once_with(saved_name, resource_type="image", invalidate=True)
