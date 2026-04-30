@@ -86,6 +86,31 @@ class AuthSecurityTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("message", response.data)
 
+    @override_settings(FRONTEND_URL="https://app.giztrack.test/")
+    @patch("apps.accounts.views.send_mail")
+    def test_forgot_password_sends_reset_email_for_registered_user(self, mock_send_mail):
+        csrf_client = APIClient(enforce_csrf_checks=True)
+        csrf_client.get("/api/v1/auth/csrf/")
+        csrf_token = csrf_client.cookies.get("csrftoken")
+
+        response = csrf_client.post(
+            "/api/v1/auth/forgot-password/",
+            {"email": self.user.email},
+            format="json",
+            HTTP_X_CSRFTOKEN=csrf_token.value,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        mock_send_mail.assert_called_once()
+
+        _, kwargs = mock_send_mail.call_args
+        self.assertEqual(kwargs["recipient_list"], [self.user.email])
+        self.assertEqual(kwargs["from_email"], settings.DEFAULT_FROM_EMAIL)
+        self.assertFalse(kwargs["fail_silently"])
+        self.assertIn("Reset your Giztrack password", kwargs["subject"])
+        self.assertIn("https://app.giztrack.test/reset-password?uid=", kwargs["message"])
+        self.assertNotIn("https://app.giztrack.test//reset-password", kwargs["message"])
+
     @override_settings(FRONTEND_URL="https://app.giztrack.test")
     @patch("apps.accounts.views.send_mail")
     def test_register_sends_welcome_email(self, mock_send_mail):
