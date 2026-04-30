@@ -284,13 +284,18 @@ PAYSTACK_WEBHOOK_URL = env("PAYSTACK_WEBHOOK_URL", default="")
 BACKEND_URL = env("BACKEND_URL", default="http://127.0.0.1:8000")
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
 
-# ── Email (console in dev, SMTP in prod) ─────────────────────────────────────
+# ── Email (console in dev, provider backend in prod) ─────────────────────────
+_RESEND_API_KEY = env("RESEND_API_KEY", default="")
 EMAIL_BACKEND = env(
     "EMAIL_BACKEND",
     default=(
-        "django.core.mail.backends.console.EmailBackend"
-        if DEBUG
-        else "django.core.mail.backends.smtp.EmailBackend"
+        "utils.email_backends.ResendEmailBackend"
+        if _RESEND_API_KEY
+        else (
+            "django.core.mail.backends.console.EmailBackend"
+            if DEBUG
+            else "django.core.mail.backends.smtp.EmailBackend"
+        )
     ),
 )
 EMAIL_HOST = env("EMAIL_HOST", default="smtp.gmail.com")
@@ -301,6 +306,9 @@ EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 if EMAIL_USE_TLS and EMAIL_USE_SSL:
     raise ImproperlyConfigured("EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be True.")
+RESEND_API_KEY = _RESEND_API_KEY or EMAIL_HOST_PASSWORD
+RESEND_API_URL = env("RESEND_API_URL", default="https://api.resend.com/emails")
+RESEND_TIMEOUT_SECONDS = env.int("RESEND_TIMEOUT_SECONDS", default=15)
 
 # ── SMS (Africa's Talking) ────────────────────────────────────────────────────
 AT_API_KEY = env("AT_API_KEY", default="")
