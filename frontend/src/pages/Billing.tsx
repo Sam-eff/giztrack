@@ -66,16 +66,33 @@ function StatusBadge({ status, planName }: { status: string; planName?: string |
 }
 
 // ── Plan Card ─────────────────────────────────────────────────────────────────
-function PlanCard({ plan, current, onSelect, loading, disabledReason }: {
+function PlanCard({ plan, current, onSelect, loading, disabledReason, monthlyPlan }: {
   plan: Plan;
   current: Subscription | null;
   onSelect: (plan: Plan) => void;
   loading: boolean;
   disabledReason?: string | null;
+  monthlyPlan?: Plan;
 }) {
   const isCurrentPlan = current?.plan?.id === plan.id;
   const isActive = current?.status === "active" || current?.status === "trial";
   const isBlocked = !isCurrentPlan && !!disabledReason;
+
+  let discountBadge = null;
+  if (plan.interval === "yearly" && monthlyPlan) {
+    const monthlyPrice = parseFloat(monthlyPlan.price);
+    const yearlyPrice = parseFloat(plan.price);
+    if (monthlyPrice > 0 && yearlyPrice < monthlyPrice * 12) {
+      const discount = Math.round(((monthlyPrice * 12 - yearlyPrice) / (monthlyPrice * 12)) * 100);
+      discountBadge = (
+        <div className="absolute -top-3 right-4">
+          <span className="px-3 py-1 rounded-full text-xs font-bold text-white bg-green-500 shadow-sm">
+            Save {discount}%
+          </span>
+        </div>
+      );
+    }
+  }
 
   return (
     <div className="rounded-2xl p-6 flex flex-col gap-4 transition-all"
@@ -88,11 +105,13 @@ function PlanCard({ plan, current, onSelect, loading, disabledReason }: {
       {/* Current plan badge */}
       {isCurrentPlan && (
         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-          <span className="px-3 py-1 rounded-full text-xs font-bold text-white bg-primary">
+          <span className="px-3 py-1 rounded-full text-xs font-bold text-white bg-primary shadow-sm">
             Current Plan
           </span>
         </div>
       )}
+      
+      {discountBadge}
 
       <div>
         <h3 className="font-display font-bold text-lg" style={{ color: "var(--color-text)" }}>
@@ -179,6 +198,7 @@ export default function Billing() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [billingInterval, setBillingInterval] = useState<"monthly" | "yearly">("monthly");
 
   const fetchAll = async () => {
     setLoading(true);
@@ -414,13 +434,19 @@ export default function Billing() {
                   </div>
                 )}
                 {subscription?.current_period_end && !isTrialOnly && (
-                  <div>
+                  <div className="flex items-center gap-2">
                     <span style={{ color: "var(--color-muted)" }}>
-                      {isActive ? "Renews " : "Ended "}
+                      {isActive ? "Auto-renews on " : "Ended on "}
                     </span>
                     <span className="font-medium" style={{ color: "var(--color-text)" }}>
                       {new Date(subscription.current_period_end).toLocaleDateString()}
                     </span>
+                    {isActive && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider"
+                        style={{ backgroundColor: "#dcfce7", color: "#166534" }}>
+                        Auto-renew ON
+                      </span>
+                    )}
                   </div>
                 )}
                 {daysLeft !== null && (daysLeft <= 7) && (
@@ -452,7 +478,7 @@ export default function Billing() {
               <button onClick={handleCancelClick} disabled={cancelling}
                 className="px-4 py-2 rounded-xl text-sm font-semibold text-red-600 shrink-0 transition-colors"
                 style={{ backgroundColor: "#fef2f2", border: "1px solid #fecaca" }}>
-                {cancelling ? "Cancelling..." : "Cancel Subscription"}
+                {cancelling ? "Processing..." : "Turn off auto-renew"}
               </button>
             )}
           </div>
@@ -476,6 +502,36 @@ export default function Billing() {
         <h2 className="font-display font-bold text-lg mb-4" style={{ color: "var(--color-text)" }}>
           Available Plans
         </h2>
+        
+        {/* Monthly/Yearly Toggle */}
+        {plans.some(p => p.interval === "yearly") && (
+          <div className="flex justify-center mb-8">
+            <div className="flex items-center p-1 rounded-xl" style={{ backgroundColor: "var(--color-bg)", border: "1px solid var(--color-border)" }}>
+              <button
+                onClick={() => setBillingInterval("monthly")}
+                className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all ${billingInterval === "monthly" ? "shadow-sm" : "opacity-60"}`}
+                style={{ 
+                  backgroundColor: billingInterval === "monthly" ? "var(--color-surface)" : "transparent",
+                  color: billingInterval === "monthly" ? "var(--color-primary)" : "var(--color-text)"
+                }}
+              >
+                Monthly
+              </button>
+              <button
+                onClick={() => setBillingInterval("yearly")}
+                className={`px-6 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${billingInterval === "yearly" ? "shadow-sm" : "opacity-60"}`}
+                style={{ 
+                  backgroundColor: billingInterval === "yearly" ? "var(--color-surface)" : "transparent",
+                  color: billingInterval === "yearly" ? "var(--color-primary)" : "var(--color-text)"
+                }}
+              >
+                Yearly
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-700 uppercase tracking-wider hidden sm:inline-block">Save</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         <p className="text-sm mb-4" style={{ color: "var(--color-muted)" }}>
           Basic keeps your shop running with core inventory, sales, customer, and repair tools. Pro adds premium controls like expenses, custom sale items, discounts, and advanced automation.
         </p>
@@ -487,18 +543,18 @@ export default function Billing() {
             {planSelectionBlockedReason}
           </div>
         )}
-        {plans.length === 0 ? (
+        {plans.filter(p => p.interval === billingInterval).length === 0 ? (
           <div className="flex items-center justify-center h-32 rounded-2xl"
             style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}>
-            <p className="text-sm" style={{ color: "var(--color-muted)" }}>No plans available</p>
+            <p className="text-sm" style={{ color: "var(--color-muted)" }}>No {billingInterval} plans available</p>
           </div>
         ) : (
           <div className={`grid gap-6 ${
-            plans.length === 1 ? "grid-cols-1 max-w-sm" :
-            plans.length === 2 ? "grid-cols-1 sm:grid-cols-2" :
+            plans.filter(p => p.interval === billingInterval).length === 1 ? "grid-cols-1 max-w-sm" :
+            plans.filter(p => p.interval === billingInterval).length === 2 ? "grid-cols-1 sm:grid-cols-2" :
             "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
           }`}>
-            {plans.map((plan) => (
+            {plans.filter(p => p.interval === billingInterval).map((plan) => (
               <PlanCard
                 key={plan.id}
                 plan={plan}
@@ -506,6 +562,7 @@ export default function Billing() {
                 onSelect={handleSelectPlan}
                 loading={payingPlanId === plan.id}
                 disabledReason={planSelectionBlockedReason}
+                monthlyPlan={plans.find(p => p.interval === "monthly" && p.max_users === plan.max_users && p.max_products === plan.max_products)}
               />
             ))}
           </div>
@@ -574,9 +631,9 @@ export default function Billing() {
       {/* Confirm Modal */}
       <ConfirmModal
         isOpen={showCancelConfirm}
-        title="Cancel Subscription"
-        message="This stops future renewals only. Your current paid period remains active until the end of the billing cycle, and payments already confirmed by Paystack are not automatically refunded."
-        confirmText="Yes, Cancel Subscription"
+        title="Turn off auto-renewal"
+        message="This will stop your subscription from automatically renewing. Your current paid period will remain active until the end of the billing cycle."
+        confirmText="Yes, turn it off"
         onConfirm={executeCancel}
         onCancel={() => setShowCancelConfirm(false)}
       />
