@@ -331,7 +331,11 @@ export default function Expenses() {
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4"
           style={{ backgroundColor: "rgba(0,0,0,0.6)" }}>
           <div className="w-full max-w-md rounded-2xl shadow-xl flex flex-col"
-            style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}>
+            style={{ 
+              backgroundColor: "var(--color-surface)", 
+              border: "1px solid var(--color-border)",
+              maxHeight: "calc(100svh - 2rem)"
+            }}>
             <div className="flex items-center justify-between px-6 py-4 border-b shrink-0"
               style={{ borderColor: "var(--color-border)" }}>
               <h2 className="font-display font-bold text-base" style={{ color: "var(--color-text)" }}>
@@ -344,7 +348,7 @@ export default function Expenses() {
               </button>
             </div>
             
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1.5" style={{ color: "var(--color-text)" }}>

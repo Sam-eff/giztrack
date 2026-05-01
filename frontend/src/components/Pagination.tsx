@@ -32,7 +32,7 @@ export default function Pagination({ count, page, pageSize = 20, onChange }: Pag
         <button
           onClick={() => onChange(page - 1)}
           disabled={page === 1}
-          className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
+          className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all hover:bg-slate-50 dark:hover:bg-slate-800 hover:-translate-y-[1px] active:scale-95 disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:bg-[var(--color-surface)]"
           style={{
             backgroundColor: "var(--color-surface)",
             border: "1px solid var(--color-border)",
@@ -47,7 +47,7 @@ export default function Pagination({ count, page, pageSize = 20, onChange }: Pag
             <button
               key={i}
               onClick={() => onChange(p as number)}
-              className="w-8 h-8 rounded-lg text-sm font-medium transition-colors"
+              className="w-8 h-8 rounded-lg text-sm font-medium transition-all hover:bg-slate-50 dark:hover:bg-slate-800 hover:-translate-y-[1px] active:scale-95"
               style={{
                 backgroundColor: page === p ? "var(--color-primary)" : "var(--color-surface)",
                 border: "1px solid var(--color-border)",
@@ -60,7 +60,7 @@ export default function Pagination({ count, page, pageSize = 20, onChange }: Pag
         <button
           onClick={() => onChange(page + 1)}
           disabled={page === totalPages}
-          className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-40"
+          className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all hover:bg-slate-50 dark:hover:bg-slate-800 hover:-translate-y-[1px] active:scale-95 disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:bg-[var(--color-surface)]"
           style={{
             backgroundColor: "var(--color-surface)",
             border: "1px solid var(--color-border)",

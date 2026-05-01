@@ -84,10 +84,10 @@ export default function Register() {
         <title>Register — Giztrack</title>
         <meta name="description" content="Create a new Giztrack account to start managing your tech shop." />
       </Helmet>
-    <div className="min-h-screen flex" style={{ backgroundColor: "var(--color-bg)" }}>
+    <div className="h-screen flex overflow-hidden" style={{ backgroundColor: "var(--color-bg)" }}>
 
       {/* Left panel */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden"
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden h-screen"
         style={{ backgroundColor: "var(--color-sidebar)" }}>
         <div className="absolute inset-0"
           style={{
@@ -136,28 +136,30 @@ export default function Register() {
       </div>
 
       {/* Right panel */}
-      <div className="flex-1 flex flex-col justify-center px-6 sm:px-12 lg:px-16 xl:px-24 relative">
+      <div className="flex-1 flex flex-col px-6 sm:px-12 lg:px-16 xl:px-24 relative h-screen overflow-y-auto">
 
         {/* Theme toggle */}
-        <button onClick={toggleTheme}
-          className="absolute top-6 right-6 p-2 rounded-lg transition-colors"
-          style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}>
-          {isDark ? (
-            <svg className="w-5 h-5" style={{ color: "var(--color-text)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
-            </svg>
-          ) : (
-            <svg className="w-5 h-5" style={{ color: "var(--color-text)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-            </svg>
-          )}
-        </button>
+        <div className="absolute top-6 right-6 z-20">
+          <button onClick={toggleTheme}
+            className="p-2 rounded-lg transition-colors"
+            style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}>
+            {isDark ? (
+              <svg className="w-5 h-5" style={{ color: "var(--color-text)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M17.657 17.657l-.707-.707M6.343 6.343l-.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+              </svg>
+            ) : (
+              <svg className="w-5 h-5" style={{ color: "var(--color-text)" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+            )}
+          </button>
+        </div>
 
-        <div className="w-full max-w-md mx-auto">
+        <div className="w-full max-w-md mx-auto my-auto py-12">
           {/* Mobile logo */}
-          <div className="lg:hidden py-4 flex items-center gap-3 mb-10">
+          <div className="lg:hidden flex items-center gap-3 mb-10">
             <img src="/favicon.png" alt="Giztrack logo" className="w-9 h-9 rounded-xl" />
             <span className="font-display font-bold text-base" style={{ color: "var(--color-primary)" }}>
               Giztrack
@@ -218,21 +220,19 @@ export default function Register() {
                     placeholder={placeholder}
                     className={inputClass(name)}
                     style={inputStyle}
-                    onFocus={(e) => e.target.style.borderColor = "var(--color-primary)"}
-                    onBlur={(e) => e.target.style.borderColor = "var(--color-border)"}
                   />
                   {errors[name] && <p className="text-red-500 text-xs mt-1">{errors[name]}</p>}
                 </div>
               ))}
 
               <button onClick={handleNext}
-                className="w-full py-3 rounded-xl text-sm font-semibold text-white mt-2"
+                className="w-full py-3 rounded-xl text-sm font-semibold text-white mt-4 transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98]"
                 style={{ background: "var(--color-primary)" }}>
                 Continue →
               </button>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-6 mt-4">
               <div className="grid grid-cols-2 gap-4">
                 {[
                   { label: "First Name", name: "first_name", placeholder: "Samuel" },
@@ -250,8 +250,6 @@ export default function Register() {
                       placeholder={placeholder}
                       className={inputClass(name)}
                       style={inputStyle}
-                      onFocus={(e) => e.target.style.borderColor = "var(--color-primary)"}
-                      onBlur={(e) => e.target.style.borderColor = "var(--color-border)"}
                     />
                     {errors[name] && <p className="text-red-500 text-xs mt-1">{errors[name]}</p>}
                   </div>
@@ -273,8 +271,6 @@ export default function Register() {
                     placeholder={placeholder}
                     className={inputClass(name)}
                     style={inputStyle}
-                    onFocus={(e) => e.target.style.borderColor = "var(--color-primary)"}
-                    onBlur={(e) => e.target.style.borderColor = "var(--color-border)"}
                   />
                   {errors[name] && <p className="text-red-500 text-xs mt-1">{errors[name]}</p>}
                 </div>
@@ -291,8 +287,6 @@ export default function Register() {
                   placeholder="Min. 8 characters"
                   className={errors.password ? "border-red-400" : ""}
                   style={inputStyle}
-                  onFocus={(e) => e.target.style.borderColor = "var(--color-primary)"}
-                  onBlur={(e) => e.target.style.borderColor = "var(--color-border)"}
                 />
                 {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
               </div>
@@ -308,15 +302,13 @@ export default function Register() {
                   placeholder="Repeat password"
                   className={errors.confirm_password ? "border-red-400" : ""}
                   style={inputStyle}
-                  onFocus={(e) => e.target.style.borderColor = "var(--color-primary)"}
-                  onBlur={(e) => e.target.style.borderColor = "var(--color-border)"}
                 />
                 {errors.confirm_password && <p className="text-red-500 text-xs mt-1">{errors.confirm_password}</p>}
               </div>
 
-              <div className="flex gap-3 pt-1">
+              <div className="flex gap-4 pt-4 pb-2">
                 <button type="button" onClick={() => setStep(1)}
-                  className="flex-1 py-3 rounded-xl text-sm font-semibold transition-colors"
+                  className="flex-1 py-3 rounded-xl text-sm font-semibold transition-all hover:bg-slate-50 dark:hover:bg-slate-800 hover:-translate-y-0.5 active:scale-[0.98]"
                   style={{
                     backgroundColor: "var(--color-surface)",
                     border: "1px solid var(--color-border)",
@@ -325,7 +317,7 @@ export default function Register() {
                   ← Back
                 </button>
                 <button type="submit" disabled={loading}
-                  className="flex-2 grow py-3 rounded-xl text-sm font-semibold text-white transition-all"
+                  className="flex-2 grow py-3 rounded-xl text-sm font-semibold text-white transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98]"
                   style={{
                     background: loading ? "var(--color-accent)" : "var(--color-primary)",
                     cursor: loading ? "not-allowed" : "pointer",

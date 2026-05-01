@@ -29,7 +29,7 @@ function Modal({ title, onClose, children }: {
         style={{
           backgroundColor: "var(--color-surface)",
           border: "1px solid var(--color-border)",
-          maxHeight: "90vh",
+          maxHeight: "calc(100dvh - 2rem)",
         }}>
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0 print:hidden"
           style={{ borderColor: "var(--color-border)" }}>

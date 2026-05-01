@@ -45,7 +45,7 @@ function Modal({ title, onClose, children }: {
         style={{
           backgroundColor: "var(--color-surface)",
           border: "1px solid var(--color-border)",
-          maxHeight: "calc(100dvh - 0.5rem)",
+          maxHeight: "calc(100dvh - 2rem)",
         }}>
         <div className="flex justify-center pt-3 sm:hidden">
           <span className="h-1.5 w-14 rounded-full" style={{ backgroundColor: "var(--color-border)" }} />
@@ -956,7 +956,14 @@ export default function Inventory() {
           <div className="space-y-4">
             <div className="p-4 rounded-xl flex items-center justify-between"
               style={{ backgroundColor: "var(--color-bg)" }}>
-              <span className="text-sm" style={{ color: "var(--color-muted)" }}>Current Stock</span>
+              <div>
+                <span className="text-sm block mb-0.5" style={{ color: "var(--color-muted)" }}>Current Stock</span>
+                {adjustingProduct.selling_price && (
+                  <span className="text-xs font-medium text-green-600">
+                    Total Value: ₦{Number(parseFloat(adjustingProduct.selling_price) * adjustingProduct.quantity).toLocaleString("en-NG", { minimumFractionDigits: 2 })}
+                  </span>
+                )}
+              </div>
               <span className="font-display font-bold text-lg" style={{ color: "var(--color-text)" }}>
                 {adjustingProduct.quantity} units
               </span>

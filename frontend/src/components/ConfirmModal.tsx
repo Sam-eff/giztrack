@@ -32,9 +32,10 @@ export default function ConfirmModal({
         style={{
           backgroundColor: "var(--color-surface)",
           border: "1px solid var(--color-border)",
+          maxHeight: "calc(100svh - 2rem)",
         }}
       >
-        <div className="px-6 pt-6 pb-5">
+        <div className="px-6 pt-6 pb-5 overflow-y-auto">
           <h2 className="font-display font-bold text-lg mb-2" style={{ color: "var(--color-text)" }}>
             {title}
           </h2>

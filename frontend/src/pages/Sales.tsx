@@ -49,7 +49,7 @@ function Modal({ title, onClose, children }: {
         style={{
           backgroundColor: "var(--color-surface)",
           border: "1px solid var(--color-border)",
-          maxHeight: "calc(100dvh - 0.5rem)",
+          maxHeight: "calc(100dvh - 2rem)",
         }}>
         <div className="flex justify-center pt-3 sm:hidden print:hidden">
           <span className="h-1.5 w-14 rounded-full" style={{ backgroundColor: "var(--color-border)" }} />
