@@ -70,7 +70,7 @@ class AuthSecurityTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertIn("detail", response.data)
 
-    @patch("apps.accounts.views.send_mail", side_effect=Exception("smtp down"))
+    @patch("apps.accounts.views.send_giztrack_email", side_effect=Exception("smtp down"))
     def test_forgot_password_returns_200_even_if_email_send_fails(self, _mock_send_mail):
         csrf_client = APIClient(enforce_csrf_checks=True)
         csrf_client.get("/api/v1/auth/csrf/")
@@ -87,7 +87,7 @@ class AuthSecurityTests(APITestCase):
         self.assertIn("message", response.data)
 
     @override_settings(FRONTEND_URL="https://app.giztrack.test/")
-    @patch("apps.accounts.views.send_mail")
+    @patch("apps.accounts.views.send_giztrack_email")
     def test_forgot_password_sends_reset_email_for_registered_user(self, mock_send_mail):
         csrf_client = APIClient(enforce_csrf_checks=True)
         csrf_client.get("/api/v1/auth/csrf/")
@@ -105,14 +105,13 @@ class AuthSecurityTests(APITestCase):
 
         _, kwargs = mock_send_mail.call_args
         self.assertEqual(kwargs["recipient_list"], [self.user.email])
-        self.assertEqual(kwargs["from_email"], settings.DEFAULT_FROM_EMAIL)
         self.assertFalse(kwargs["fail_silently"])
         self.assertIn("Reset your Giztrack password", kwargs["subject"])
         self.assertIn("https://app.giztrack.test/reset-password?uid=", kwargs["message"])
         self.assertNotIn("https://app.giztrack.test//reset-password", kwargs["message"])
 
     @override_settings(FRONTEND_URL="https://app.giztrack.test")
-    @patch("apps.accounts.views.send_mail")
+    @patch("apps.accounts.views.send_giztrack_email")
     def test_register_sends_welcome_email(self, mock_send_mail):
         csrf_client = APIClient(enforce_csrf_checks=True)
         csrf_client.get("/api/v1/auth/csrf/")
@@ -140,12 +139,11 @@ class AuthSecurityTests(APITestCase):
 
         _, kwargs = mock_send_mail.call_args
         self.assertEqual(kwargs["recipient_list"], ["newowner@example.com"])
-        self.assertEqual(kwargs["from_email"], settings.DEFAULT_FROM_EMAIL)
         self.assertFalse(kwargs["fail_silently"])
         self.assertIn("Welcome to Giztrack, Fresh Gizmos", kwargs["subject"])
         self.assertIn("https://app.giztrack.test/login", kwargs["message"])
 
-    @patch("apps.accounts.views.send_mail", side_effect=Exception("smtp down"))
+    @patch("apps.accounts.views.send_giztrack_email", side_effect=Exception("smtp down"))
     def test_register_returns_201_even_if_welcome_email_fails(self, _mock_send_mail):
         csrf_client = APIClient(enforce_csrf_checks=True)
         csrf_client.get("/api/v1/auth/csrf/")

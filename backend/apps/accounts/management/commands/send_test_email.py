@@ -45,10 +45,10 @@ class Command(BaseCommand):
         )
 
         try:
-            send_mail(
+            from utils.email_utils import send_giztrack_email
+            send_giztrack_email(
                 subject=subject,
                 message=message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[recipient],
                 fail_silently=False,
             )

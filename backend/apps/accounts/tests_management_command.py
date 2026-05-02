@@ -12,7 +12,7 @@ class SendTestEmailCommandTests(SimpleTestCase):
         EMAIL_HOST="smtp.example.com",
         EMAIL_PORT=587,
     )
-    @patch("apps.accounts.management.commands.send_test_email.send_mail")
+    @patch("apps.accounts.management.commands.send_test_email.send_giztrack_email")
     def test_send_test_email_uses_current_mail_settings(self, mock_send_mail):
         stdout = StringIO()
 
@@ -21,7 +21,6 @@ class SendTestEmailCommandTests(SimpleTestCase):
         mock_send_mail.assert_called_once()
         _, kwargs = mock_send_mail.call_args
         self.assertEqual(kwargs["subject"], "Giztrack email test")
-        self.assertEqual(kwargs["from_email"], "Giztrack <noreply@giztrack.com>")
         self.assertEqual(kwargs["recipient_list"], ["ops@example.com"])
         self.assertFalse(kwargs["fail_silently"])
         self.assertIn("smtp.example.com", kwargs["message"])

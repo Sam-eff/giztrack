@@ -1,4 +1,4 @@
-from django.core.mail import send_mail
+from utils.email_utils import send_giztrack_email
 from django.conf import settings
 from django.db.models import F
 from django.utils import timezone
@@ -21,7 +21,7 @@ def notify_repair_ready(ticket_id):
 
     # ── Email ─────────────────────────────────────────────────────────────
     if ticket.customer and ticket.customer.email:
-        send_mail(
+        send_giztrack_email(
             subject=repair_ready_subject(),
             message=repair_ready_body(
                 customer_name=ticket.customer.name,
@@ -29,7 +29,6 @@ def notify_repair_ready(ticket_id):
                 shop_name=ticket.shop.name,
                 shop_phone=ticket.shop.phone,
             ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[ticket.customer.email],
             fail_silently=False,
         )
@@ -69,7 +68,7 @@ def notify_low_stock(product_id):
     if not admin or not admin.email:
         return f"Skipped — no admin email for shop {shop.name}"
 
-    send_mail(
+    send_giztrack_email(
         subject=low_stock_subject(shop.name),
         message=low_stock_body(
             products=[{
@@ -79,7 +78,6 @@ def notify_low_stock(product_id):
             }],
             shop_name=shop.name,
         ),
-        from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[admin.email],
         fail_silently=False,
     )
@@ -111,13 +109,12 @@ def notify_expiring_subscriptions():
             if not admin or not admin.email:
                 continue
 
-            send_mail(
+            send_giztrack_email(
                 subject=subscription_expiry_subject(),
                 message=subscription_expiry_body(
                     shop_name=shop.name,
                     days_remaining=days,
                 ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
                 recipient_list=[admin.email],
                 fail_silently=True,
             )
@@ -167,10 +164,9 @@ Repairs
 
 — Giztrack
 """
-        send_mail(
+        send_giztrack_email(
             subject=f"Daily Summary — {yesterday.strftime('%d %b %Y')}",
             message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[admin.email],
             fail_silently=True,
         )

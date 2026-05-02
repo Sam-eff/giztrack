@@ -9,7 +9,7 @@ from django.utils.decorators import method_decorator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.core.mail import send_mail
+
 from django.conf import settings
 import logging
 from rest_framework import generics, status, permissions
@@ -109,7 +109,8 @@ def _send_signup_welcome_email(shop, user):
     login_url = f"{frontend_url}/login"
 
     try:
-        send_mail(
+        from utils.email_utils import send_giztrack_email
+        send_giztrack_email(
             subject=f"Welcome to Giztrack, {shop.name}",
             message=(
                 f"Hi {user.first_name},\n\n"
@@ -121,7 +122,6 @@ def _send_signup_welcome_email(shop, user):
                 f"If you did not create this account, please contact support immediately.\n\n"
                 f"— Giztrack"
             ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
             recipient_list=[user.email],
             fail_silently=False,
         )
@@ -371,7 +371,8 @@ class ForgotPasswordView(APIView):
             reset_link = f"{frontend_url}/reset-password?uid={uid}&token={token}"
 
             try:
-                send_mail(
+                from utils.email_utils import send_giztrack_email
+                send_giztrack_email(
                     subject="Reset your Giztrack password",
                     message=(
                         f"Hi {user.first_name},\n\n"
@@ -381,7 +382,6 @@ class ForgotPasswordView(APIView):
                         f"If you didn't request this, you can ignore this email.\n\n"
                         f"— Giztrack"
                     ),
-                    from_email=settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[user.email],
                     fail_silently=False,
                 )
