@@ -295,7 +295,7 @@ export default function Billing() {
     }
   };
 
-  const isActive = subscription?.status === "active" || hasActiveSubscription;
+  const isActive = subscription ? subscription.status === "active" : hasActiveSubscription;
   const isTrialOnly = isTrial && !hasActiveSubscription && !subscription;
   const isInTrial = isTrialOnly || subscription?.status === "trial";
   const hasPendingCheckout = !!subscription?.has_pending_checkout && !!subscription?.pending_plan;

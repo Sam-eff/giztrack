@@ -17,4 +17,4 @@ export const SUPPORT_PHONE_LINK = SUPPORT_PHONE
   ? `tel:${SUPPORT_PHONE.replace(/\s+/g, "")}`
   : "";
 
-export const LEGAL_LAST_UPDATED = "April 8, 2026";
+export const LEGAL_LAST_UPDATED = "May 2, 2026";
