@@ -81,7 +81,10 @@ const sections = [
   },
 ];
 
+import { useAuth } from "../context/AuthContext";
+
 export default function PrivacyPolicy() {
+  const { isAuthenticated } = useAuth();
   return (
     <>
       <Helmet>
@@ -103,9 +106,15 @@ export default function PrivacyPolicy() {
         >
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14">
             <div className="flex flex-wrap items-center gap-3 text-sm" style={{ color: "var(--color-muted)" }}>
-              <Link to="/login" className="font-medium hover:underline" style={{ color: "var(--color-primary)" }}>
-                Back to login
-              </Link>
+              {isAuthenticated ? (
+                <Link to="/" className="font-medium hover:underline" style={{ color: "var(--color-primary)" }}>
+                  Back to dashboard
+                </Link>
+              ) : (
+                <Link to="/login" className="font-medium hover:underline" style={{ color: "var(--color-primary)" }}>
+                  Back to login
+                </Link>
+              )}
               <span>•</span>
               <Link to="/terms" className="font-medium hover:underline" style={{ color: "var(--color-primary)" }}>
                 Terms of Service
