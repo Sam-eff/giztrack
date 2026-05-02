@@ -26,8 +26,23 @@ createRoot(document.getElementById("root")!).render(
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    void navigator.serviceWorker.register("/sw.js").catch(() => {
-      // Offline support should never block app startup.
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((registration) => {
+        // Force check for a new service worker on every page load
+        void registration.update();
+      })
+      .catch(() => {
+        // Offline support should never block app startup.
+      });
+
+    // When a new service worker takes over, reload to get fresh assets
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!refreshing) {
+        refreshing = true;
+        window.location.reload();
+      }
     });
   });
 }
