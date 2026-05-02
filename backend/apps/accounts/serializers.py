@@ -106,7 +106,7 @@ class UserSerializer(serializers.ModelSerializer):
             "phone", "role", "shop", "shop_name", "date_joined",
             "subscription_plan", "subscription_status",
             "is_in_trial", "trial_days_remaining",
-            "has_active_subscription", "has_app_access", "has_pro_access",
+            "has_active_subscription", "has_app_access", "has_pro_access", "is_active",
         ]
         read_only_fields = ["id", "email", "role", "shop", "date_joined"]
 

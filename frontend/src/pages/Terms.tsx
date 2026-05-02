@@ -93,7 +93,7 @@ export default function Terms() {
         />
       </Helmet>
 
-      <div className="min-h-screen" style={{ backgroundColor: "var(--color-bg)" }}>
+      <div className="h-[100dvh] overflow-y-auto" style={{ backgroundColor: "var(--color-bg)" }}>
         <div
           className="border-b"
           style={{

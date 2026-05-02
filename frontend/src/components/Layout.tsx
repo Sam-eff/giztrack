@@ -247,7 +247,7 @@ export default function Layout() {
         style={{ borderColor: "rgba(255,255,255,0.06)" }}>
         <img src="/favicon.png" alt="Giztrack logo" className="w-9 h-9 rounded-xl shrink-0" />
         <div className="min-w-0">
-          <p className="text-white font-display font-bold text-sm truncate">
+          <p className="text-text font-display font-bold text-sm truncate">
             {user?.shop_name || "Tech Shop"}
           </p>
           <p className="text-xs truncate" style={{ color: "var(--color-sidebar-text)" }}>
@@ -310,11 +310,11 @@ export default function Layout() {
         {/* User */}
         <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl"
           style={{ backgroundColor: "rgba(255,255,255,0.04)" }}>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold shrink-0">
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-tex text-xs font-bold shrink-0">
             {user?.first_name?.[0]}{user?.last_name?.[0]}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-white text-xs font-medium truncate">{user?.full_name}</p>
+            <p className="text-text text-xs font-medium truncate">{user?.full_name}</p>
             <p className="text-xs truncate" style={{ color: "var(--color-sidebar-text)" }}>
               {user?.email}
             </p>
