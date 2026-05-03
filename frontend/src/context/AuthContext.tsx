@@ -70,9 +70,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((requestError: AxiosError) => {
         if (isMounted) {
-          if (!requestError.response && cachedUser) {
+          const status = requestError.response?.status;
+          const isOfflineResponse = !requestError.response || (status && status >= 500);
+
+          if (isOfflineResponse && cachedUser) {
             setUser(cachedUser);
-          } else {
+          } else if (status === 401 || status === 403 || !isOfflineResponse) {
             setUser(null);
             persistCachedUser(null);
           }
