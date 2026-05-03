@@ -23,7 +23,6 @@ from django.urls import include, path, re_path
 from django.views.generic import RedirectView
 from django.views.static import serve as media_serve
 from utils.health import healthcheck
-from utils.sms_diagnostic import sms_diagnostic
 
 API_PREFIX = "api/v1/"
 ADMIN_PANEL_PATH = "/giztrack-ctrl-panel/"
@@ -35,7 +34,6 @@ urlpatterns = [
     path('Giztrack-ctrl-panel/', RedirectView.as_view(url=ADMIN_PANEL_PATH, permanent=False)),
     path('giztrack-ctrl-panel/', admin.site.urls),
     path(f"{API_PREFIX}health/", healthcheck, name="api-healthcheck"),
-    path(f"{API_PREFIX}debug/sms/", sms_diagnostic, name="sms-diagnostic"),
     path(f"{API_PREFIX}auth/", include('apps.accounts.urls')),
     path(f"{API_PREFIX}shops/", include('apps.shops.urls')),
     path(f"{API_PREFIX}inventory/", include('apps.inventory.urls')),
