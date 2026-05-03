@@ -51,7 +51,7 @@ export default function Register() {
     try {
       const { data } = await api.post("/auth/register/", form);
       login(data.user);
-      navigate(consumePostAuthRedirect("/"), { replace: true });
+      navigate(consumePostAuthRedirect("/dashboard"), { replace: true });
     } catch (err: unknown) {
       const parsed = parseApiErrors(err, "Registration failed. Please try again.");
       setErrors(

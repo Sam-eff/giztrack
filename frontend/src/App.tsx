@@ -10,6 +10,7 @@ import {
 import OfflineNotice from "./components/OfflineNotice";
 import { buildAppPath, rememberPostAuthRedirect } from "./utils/navigation";
 
+const Landing = lazy(() => import("./pages/Landing"));
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
@@ -120,15 +121,15 @@ export default function App() {
         >
           <Route index element={withSuspense(<Billing />, <PageSkeleton />)} />
         </Route>
+        <Route path="/" element={withSuspense(<Landing />, <PublicPageFallback />)} />
         <Route
-          path="/"
           element={
             <PrivateRoute>
               {withSuspense(<Layout />, <AppShellFallback />)}
             </PrivateRoute>
           }
         >
-          <Route index element={withSuspense(<Dashboard />, <DashboardSkeleton />)} />
+          <Route path="dashboard" element={withSuspense(<Dashboard />, <DashboardSkeleton />)} />
           <Route path="inventory" element={withSuspense(<Inventory />, <PageSkeleton />)} />
           <Route path="sales" element={withSuspense(<Sales />, <PageSkeleton />)} />
           <Route path="repairs" element={withSuspense(<Repairs />, <PageSkeleton />)} />

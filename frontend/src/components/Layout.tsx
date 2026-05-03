@@ -10,7 +10,7 @@ import { clearPostAuthRedirect } from "../utils/navigation";
 
 const navItems = [
   {
-    path: "/",
+    path: "/dashboard",
     label: "Dashboard",
     roles: ["admin", "staff", "technician"],
     icon: (
@@ -122,7 +122,7 @@ const navItems = [
 ];
 
 const routePreloaders: Record<string, () => Promise<unknown>> = {
-  "/": () => import("../pages/Dashboard"),
+  "/dashboard": () => import("../pages/Dashboard"),
   "/inventory": () => import("../pages/Inventory"),
   "/sales": () => import("../pages/Sales"),
   "/repairs": () => import("../pages/Repairs"),

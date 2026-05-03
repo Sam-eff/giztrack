@@ -30,7 +30,7 @@ export default function Login() {
     try {
       const { data } = await api.post("/auth/login/", form);
       login(data.user);
-      navigate(consumePostAuthRedirect("/"), { replace: true });
+      navigate(consumePostAuthRedirect("/dashboard"), { replace: true });
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, "Invalid email or password."));
     } finally {
