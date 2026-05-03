@@ -9,15 +9,39 @@ def build_html_email(subject: str, plain_text_body: str) -> str:
     """
     Wraps a plain text email body in a professional HTML template with the Giztrack logo.
     """
-    # Convert plain text line breaks to HTML paragraphs and breaks
-    # First, handle double line breaks as paragraphs
     paragraphs = plain_text_body.strip().split('\n\n')
     
     html_paragraphs = []
+    url_pattern = re.compile(r'(https?://[^\s]+)')
+
     for p in paragraphs:
-        # Handle single line breaks within paragraphs
-        p_html = p.replace('\n', '<br>')
-        html_paragraphs.append(f'<p style="margin-bottom: 16px; line-height: 1.6; color: #334155;">{p_html}</p>')
+        if url_pattern.fullmatch(p.strip()):
+            url = p.strip()
+            html_paragraphs.append(
+                f'<div style="text-align: center; margin: 32px 0;">'
+                f'<a href="{url}" style="background-color: #134e5e; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Open Link</a>'
+                f'</div>'
+            )
+            continue
+            
+        lines = p.split('\n')
+        p_html_lines = []
+        for line in lines:
+            if url_pattern.fullmatch(line.strip()):
+                url = line.strip()
+                p_html_lines.append(
+                    f'<div style="text-align: center; margin: 24px 0;">'
+                    f'<a href="{url}" style="background-color: #134e5e; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">Open Link</a>'
+                    f'</div>'
+                )
+            else:
+                line_html = url_pattern.sub(r'<a href="\1" style="color: #134e5e; text-decoration: underline; font-weight: 500;">\1</a>', line)
+                p_html_lines.append(line_html)
+                
+        p_html = "<br>".join(p_html_lines)
+        p_html = p_html.replace('<br><div', '<div').replace('</div><br>', '</div>')
+        
+        html_paragraphs.append(f'<div style="margin-bottom: 16px; line-height: 1.6; color: #334155;">{p_html}</div>')
     
     body_content = "".join(html_paragraphs)
     
