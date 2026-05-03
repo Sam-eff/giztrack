@@ -119,13 +119,27 @@ export function parseApiErrors(error: unknown, fallback = "An unexpected error o
 
   if (error instanceof AxiosError) {
     const data = error.response?.data;
-
+    
+    // Check if the backend responded with a structured error payload
     if (mapErrorPayload(data, result)) {
+      return result;
+    }
+
+    // Handle network errors gracefully
+    if (error.code === "ERR_NETWORK" || !error.response) {
+      result.nonFieldError = "The server could not be reached. Please check your internet connection.";
+      return result;
+    }
+
+    // Handle 500 Server Errors gracefully
+    if (error.response.status >= 500) {
+      result.nonFieldError = "An unexpected server error occurred. Please try again later.";
       return result;
     }
   }
 
-  if (error instanceof Error && error.message.trim()) {
+  // Fallback for native JS errors, but hide Axios generic status code strings
+  if (error instanceof Error && error.message.trim() && !error.message.startsWith("Request failed with status code")) {
     result.nonFieldError = error.message;
     return result;
   }
