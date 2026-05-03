@@ -143,31 +143,32 @@ export default function Landing() {
             display: "flex", alignItems: "center", justifyContent: "space-between",
             height: 56,
           }}>
-            {/* Logo */}
-            <Link to="/" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: "var(--color-text)", flexShrink: 0 }}>
-              <img src="/favicon.png" alt="Giztrack" style={{ width: 28, height: 28, borderRadius: 8 }} />
-              <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 17 }}>Giztrack</span>
-            </Link>
-
-            {/* Actions — compact on mobile */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {/* Left: Logo + theme toggle */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+              <Link to="/" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: "var(--color-primary)" }}>
+                <img src="/favicon.png" alt="Giztrack" style={{ width: 28, height: 28, borderRadius: 8 }} />
+                <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 17 }}>Giztrack</span>
+              </Link>
               <button
                 type="button"
                 onClick={toggleTheme}
                 aria-label="Toggle theme"
                 style={{
-                  width: 34, height: 34, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
                   backgroundColor: "var(--color-bg)", border: "1px solid var(--color-border)", cursor: "pointer",
                   color: "var(--color-muted)", flexShrink: 0,
                 }}
               >
                 {isDark ? (
-                  <svg style={{ width: 16, height: 16 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                  <svg style={{ width: 15, height: 15 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
                 ) : (
-                  <svg style={{ width: 16, height: 16 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+                  <svg style={{ width: 15, height: 15 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
                 )}
               </button>
+            </div>
 
+            {/* Right: Auth actions */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               {isLoggedIn ? (
                 <Link
                   to="/dashboard"
