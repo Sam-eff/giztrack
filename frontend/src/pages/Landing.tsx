@@ -355,7 +355,10 @@ export default function Landing() {
               }}>
                 <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 16, marginBottom: 2 }}>Basic</p>
                 <p style={{ fontSize: 12, color: "var(--color-muted)", marginBottom: 16 }}>For shops just getting started.</p>
-                <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 32, marginBottom: 16 }}>Free</p>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 16 }}>
+                  <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 32 }}>₦3,000</span>
+                  <span style={{ fontSize: 13, color: "var(--color-muted)", fontWeight: 600 }}>/ mo</span>
+                </div>
 
                 <ul style={{ listStyle: "none", padding: 0, margin: 0, flex: 1, display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
                   {freeFeatures.map((f, i) => (
@@ -400,7 +403,7 @@ export default function Landing() {
                 <p style={{ fontSize: 12, color: "var(--color-muted)", marginBottom: 16 }}>For growing businesses.</p>
 
                 <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 16 }}>
-                  <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 32 }}>₦5,000</span>
+                  <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 32 }}>₦6,000</span>
                   <span style={{ fontSize: 13, color: "var(--color-muted)", fontWeight: 600 }}>/ mo</span>
                 </div>
 
