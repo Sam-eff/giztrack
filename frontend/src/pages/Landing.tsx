@@ -145,7 +145,7 @@ export default function Landing() {
             height: 64,
           }}>
             {/* Logo */}
-            <Link to="/" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: "var(--color-text)" }}>
+            <Link to="/" style={{ display: "flex", alignItems: "center", gap: 8, textDecoration: "none", color: "var(--color-primary)" }}>
               <img src="/favicon.png" alt="Giztrack" style={{ width: 32, height: 32, borderRadius: 10 }} />
               <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 18 }}>Giztrack</span>
             </Link>
@@ -324,7 +324,7 @@ export default function Landing() {
                 <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 17, marginBottom: 4 }}>Basic</p>
                 <p style={{ fontSize: 13, color: "var(--color-muted)", marginBottom: 20 }}>For shops just getting started.</p>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginBottom: 20 }}>
-                  <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 36 }}>₦6,000</span>
+                  <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 36 }}>₦3,000</span>
                   <span style={{ fontSize: 14, color: "var(--color-muted)", fontWeight: 600 }}>/ mo</span>
                 </div>
 
