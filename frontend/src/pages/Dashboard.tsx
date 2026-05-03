@@ -5,6 +5,7 @@ import type { DashboardStats } from "../types";
 import api from "../api/axios";
 import ProFeatureOverlay from "../components/ProFeatureOverlay";
 import { DashboardSkeleton } from "../components/LoadingFallbacks";
+import { getApiErrorMessage } from "../utils/http";
 
 interface TrendData {
   period: string;
@@ -122,7 +123,7 @@ export default function Dashboard() {
     ])
       .then(([dashResult, trendsResult]) => {
         if (dashResult.status !== "fulfilled") {
-          setError("Failed to load dashboard data.");
+          setError(getApiErrorMessage(dashResult.reason, "Failed to load dashboard data."));
           return;
         }
 
@@ -134,7 +135,7 @@ export default function Dashboard() {
           setTrends([]);
         }
       })
-      .catch(() => setError("Failed to load dashboard data."))
+      .catch((err) => setError(getApiErrorMessage(err, "Failed to load dashboard data.")))
       .finally(() => setLoading(false));
   }, [user, isPro]);
 
