@@ -36,10 +36,22 @@ def send_sms(to_number: str, message: str) -> bool:
     username = getattr(settings, "AT_USERNAME", "")
     sender_id = getattr(settings, "AT_SENDER_ID", "")
 
+    logger.info(
+        "[SMS] Attempting to send SMS. "
+        "AT_USERNAME=%s, AT_API_KEY=%s, AT_SENDER_ID=%s, to=%s",
+        username or "(empty)",
+        f"{api_key[:8]}...{api_key[-4:]}" if len(api_key) > 12 else "(too short or empty)",
+        sender_id or "(empty)",
+        to_number,
+    )
+
     if not api_key or not username:
-        logger.warning("Africa's Talking credentials not configured. SMS not sent.")
+        logger.warning("[SMS] Africa's Talking credentials not configured. SMS not sent.")
         # In DEBUG mode, pretend it succeeded so development flows still work
         return bool(getattr(settings, "DEBUG", False))
+
+    if username == "sandbox":
+        logger.warning("[SMS] AT_USERNAME is still 'sandbox'. SMS will NOT reach real phones!")
 
     try:
         import africastalking
@@ -48,6 +60,7 @@ def send_sms(to_number: str, message: str) -> bool:
         sms = africastalking.SMS
 
         to_number = _normalize_nigerian_number(to_number)
+        logger.info("[SMS] Normalized phone: %s", to_number)
 
         kwargs = {
             "message": message,
@@ -57,15 +70,18 @@ def send_sms(to_number: str, message: str) -> bool:
             kwargs["sender_id"] = sender_id
 
         response = sms.send(**kwargs)
+        logger.info("[SMS] Full API response: %s", response)
+
         recipients = response.get("SMSMessageData", {}).get("Recipients", [])
 
         if recipients and recipients[0].get("status") == "Success":
-            logger.info(f"SMS sent successfully to {to_number} via Africa's Talking.")
+            logger.info("[SMS] SMS sent successfully to %s", to_number)
             return True
         else:
-            logger.error(f"Africa's Talking SMS failed: {response}")
+            api_message = response.get("SMSMessageData", {}).get("Message", "No message")
+            logger.error("[SMS] Africa's Talking SMS failed. Recipients: %s, Message: %s", recipients, api_message)
             return False
 
     except Exception as e:
-        logger.error(f"Unexpected error when sending SMS via Africa's Talking: {e}")
+        logger.error("[SMS] Unexpected error sending SMS: %s: %s", type(e).__name__, e)
         return False
