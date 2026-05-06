@@ -8,6 +8,7 @@ import {
   PublicPageFallback,
 } from "./components/LoadingFallbacks";
 import OfflineNotice from "./components/OfflineNotice";
+import InstallPrompt from "./components/InstallPrompt";
 import { buildAppPath, rememberPostAuthRedirect } from "./utils/navigation";
 
 const Landing = lazy(() => import("./pages/Landing"));
@@ -108,6 +109,7 @@ export default function App() {
   return (
     <>
       <OfflineNotice />
+      <InstallPrompt />
       <Routes>
         <Route path="/login" element={withSuspense(<Login />, <PublicPageFallback />)} />
         <Route path="/register" element={withSuspense(<Register />, <PublicPageFallback />)} />

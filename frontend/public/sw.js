@@ -1,4 +1,4 @@
-const VERSION = "Giztrack-v2";
+const VERSION = "Giztrack-v3";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const APP_SHELL = [
@@ -7,6 +7,8 @@ const APP_SHELL = [
   "/offline.html",
   "/manifest.webmanifest",
   "/favicon.png",
+  "/icon-192.png",
+  "/icon-512.png",
 ];
 
 const isStaticAsset = (request, url) => {
