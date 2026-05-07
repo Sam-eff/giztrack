@@ -15,6 +15,51 @@ interface TrendData {
 
 const DashboardRevenueChart = lazy(() => import("../components/charts/DashboardRevenueChart"));
 
+const emptyDashboardStats: DashboardStats = {
+  inventory: {
+    total_products: 0,
+    low_stock_count: 0,
+  },
+  sales_today: {
+    count: 0,
+    payment_count: 0,
+    sales_value: 0,
+    cash_received: 0,
+    revenue: 0,
+    profit: 0,
+  },
+  credit: {
+    outstanding: 0,
+    customers_with_balance: 0,
+    sales_with_balance: 0,
+  },
+  revenue_all_time: 0,
+  repairs: {
+    active: 0,
+    completed_today: 0,
+    by_status: {},
+  },
+};
+
+const isBrowserOffline = () =>
+  typeof navigator !== "undefined" ? !navigator.onLine : false;
+
+const isOfflineApiFailure = (error: unknown) => {
+  if (isBrowserOffline()) {
+    return true;
+  }
+
+  if (!error || typeof error !== "object" || !("response" in error)) {
+    return false;
+  }
+
+  const response = (error as {
+    response?: { status?: number; data?: { error?: string } };
+  }).response;
+
+  return response?.status === 503 && response.data?.error === "network_unavailable";
+};
+
 const toDateInputValue = (date: Date) => {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
@@ -94,9 +139,23 @@ export default function Dashboard() {
   const [trends, setTrends] = useState<TrendData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [isOffline, setIsOffline] = useState(isBrowserOffline);
+  const [usingOfflineFallback, setUsingOfflineFallback] = useState(false);
 
   const fmt = (n: number) =>
     `₦${Number(n).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
+
+  useEffect(() => {
+    const handleStatusChange = () => setIsOffline(isBrowserOffline());
+
+    window.addEventListener("offline", handleStatusChange);
+    window.addEventListener("online", handleStatusChange);
+
+    return () => {
+      window.removeEventListener("offline", handleStatusChange);
+      window.removeEventListener("online", handleStatusChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -112,6 +171,7 @@ export default function Dashboard() {
 
     setLoading(true);
     setError("");
+    setUsingOfflineFallback(false);
 
     Promise.allSettled([
       api.get("/reports/dashboard/"),
@@ -123,6 +183,13 @@ export default function Dashboard() {
     ])
       .then(([dashResult, trendsResult]) => {
         if (dashResult.status !== "fulfilled") {
+          if (isOfflineApiFailure(dashResult.reason)) {
+            setStats(emptyDashboardStats);
+            setTrends([]);
+            setUsingOfflineFallback(true);
+            return;
+          }
+
           setError(getApiErrorMessage(dashResult.reason, "Failed to load dashboard data."));
           return;
         }
@@ -135,7 +202,16 @@ export default function Dashboard() {
           setTrends([]);
         }
       })
-      .catch((err) => setError(getApiErrorMessage(err, "Failed to load dashboard data.")))
+      .catch((err) => {
+        if (isOfflineApiFailure(err)) {
+          setStats(emptyDashboardStats);
+          setTrends([]);
+          setUsingOfflineFallback(true);
+          return;
+        }
+
+        setError(getApiErrorMessage(err, "Failed to load dashboard data."));
+      })
       .finally(() => setLoading(false));
   }, [user, isPro]);
 
@@ -164,6 +240,12 @@ export default function Dashboard() {
       </Helmet>
       <div className="space-y-6 animate-in fade-in slide-in-bottom-4 duration-500 pb-20 lg:pb-0">
 
+      {(isOffline || usingOfflineFallback) && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+          Offline mode. Showing the last loaded dashboard values when available; live updates resume when connected.
+        </div>
+      )}
+
       {/* Hero Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
@@ -176,8 +258,12 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="px-4 py-2 bg-surface border border-app rounded-xl shadow-sm text-sm font-bold text-muted flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-          Live Workspace
+          <div
+            className={`w-2 h-2 rounded-full ${
+              isOffline || usingOfflineFallback ? "bg-amber-500" : "bg-green-500 animate-pulse"
+            }`}
+          ></div>
+          {isOffline || usingOfflineFallback ? "Offline Workspace" : "Live Workspace"}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
-const VERSION = "Giztrack-v3";
+const VERSION = "Giztrack-v4";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
+const API_CACHE = `${VERSION}-api`;
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -24,6 +25,26 @@ const isStaticAsset = (request, url) => {
   );
 };
 
+const isApiRequest = (url) => url.pathname.startsWith("/api/");
+
+const isCacheableApiRequest = (url) =>
+  isApiRequest(url) && !url.pathname.includes("/auth/");
+
+const offlineApiResponse = () =>
+  new Response(
+    JSON.stringify({
+      detail: "Network error. The API server could not be reached.",
+      error: "network_unavailable",
+    }),
+    {
+      status: 503,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      },
+    }
+  );
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
@@ -40,7 +61,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => ![SHELL_CACHE, RUNTIME_CACHE].includes(key))
+            .filter((key) => ![SHELL_CACHE, RUNTIME_CACHE, API_CACHE].includes(key))
             .map((key) => caches.delete(key))
         )
       )
@@ -57,23 +78,38 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
 
-  if (url.pathname.startsWith("/api/")) {
+  if (isApiRequest(url)) {
     event.respondWith(
-      fetch(request).catch(() =>
-        new Response(
-          JSON.stringify({
-            detail: "Network error. The API server could not be reached.",
-            error: "network_unavailable",
-          }),
-          {
-            status: 503,
-            headers: {
-              "Content-Type": "application/json",
-              "Cache-Control": "no-store",
-            },
+      (async () => {
+        const canUseOfflineCache = isCacheableApiRequest(url);
+        const cache = canUseOfflineCache ? await caches.open(API_CACHE) : null;
+
+        try {
+          const response = await fetch(request);
+
+          if (response.ok && cache) {
+            void cache.put(request, response.clone()).catch(() => undefined);
           }
-        )
-      )
+
+          if (response.status >= 500 && cache) {
+            const cached = await cache.match(request);
+            if (cached) {
+              return cached;
+            }
+          }
+
+          return response;
+        } catch {
+          if (cache) {
+            const cached = await cache.match(request);
+            if (cached) {
+              return cached;
+            }
+          }
+
+          return offlineApiResponse();
+        }
+      })()
     );
     return;
   }

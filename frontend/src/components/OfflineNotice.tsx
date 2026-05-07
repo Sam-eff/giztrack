@@ -44,7 +44,7 @@ export default function OfflineNotice() {
 
   return (
     <div
-      className="fixed left-4 right-4 top-4 z-[70] mx-auto max-w-xl rounded-2xl border px-4 py-3 shadow-lg"
+      className="pointer-events-none fixed left-3 right-3 top-[4.75rem] z-20 mx-auto max-w-xl rounded-2xl border px-4 py-3 shadow-lg sm:left-4 sm:right-4 lg:top-4 lg:z-[70]"
       style={{
         backgroundColor: isOffline ? "#fff7ed" : "#ecfdf5",
         borderColor: isOffline ? "#fdba74" : "#86efac",
