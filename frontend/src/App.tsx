@@ -10,6 +10,7 @@ import {
 import OfflineNotice from "./components/OfflineNotice";
 import InstallPrompt from "./components/InstallPrompt";
 import RouteLoadBoundary from "./components/RouteLoadBoundary";
+import SeoDefaults from "./components/SeoDefaults";
 import { buildAppPath, rememberPostAuthRedirect } from "./utils/navigation";
 
 const Landing = lazy(() => import("./pages/Landing"));
@@ -113,6 +114,7 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <>
+      <SeoDefaults />
       <OfflineNotice />
       <InstallPrompt />
       <Routes>

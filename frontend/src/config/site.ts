@@ -9,6 +9,10 @@ const cleanEnvValue = (value: unknown) => {
 export const SUPPORT_EMAIL =
   cleanEnvValue(import.meta.env.VITE_SUPPORT_EMAIL) || "support@giztrack.com";
 
+export const SITE_ORIGIN =
+  cleanEnvValue(import.meta.env.VITE_SITE_ORIGIN).replace(/\/+$/, "") ||
+  "https://giztrack.com";
+
 export const SUPPORT_PHONE = cleanEnvValue(import.meta.env.VITE_SUPPORT_PHONE);
 
 export const SUPPORT_EMAIL_LINK = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Giztrack enquiry")}`;
