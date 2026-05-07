@@ -9,6 +9,7 @@ import {
 } from "./components/LoadingFallbacks";
 import OfflineNotice from "./components/OfflineNotice";
 import InstallPrompt from "./components/InstallPrompt";
+import RouteLoadBoundary from "./components/RouteLoadBoundary";
 import { buildAppPath, rememberPostAuthRedirect } from "./utils/navigation";
 
 const Landing = lazy(() => import("./pages/Landing"));
@@ -82,7 +83,11 @@ if (SENTRY_DSN) {
 }
 
 function withSuspense(element: React.ReactNode, fallback: React.ReactNode) {
-  return <Suspense fallback={fallback}>{element}</Suspense>;
+  return (
+    <RouteLoadBoundary>
+      <Suspense fallback={fallback}>{element}</Suspense>
+    </RouteLoadBoundary>
+  );
 }
 
 function RedirectToLogin() {

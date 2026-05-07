@@ -213,7 +213,7 @@ export default function Layout() {
     if (visibleNavItems.length === 0) return;
 
     const warmVisibleRoutes = () => {
-      visibleNavItems.slice(0, 5).forEach((item) => preloadRoute(item.path));
+      visibleNavItems.forEach((item) => preloadRoute(item.path));
     };
 
     const browserWindow = typeof window !== "undefined" ? window : null;
