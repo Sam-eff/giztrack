@@ -305,9 +305,12 @@ function Receipt({
 }
 
 export default function Sales() {
-  const { isPro } = useAuth();
+  const { user, isPro } = useAuth();
   const { success, error, warning } = useToast();
   const [tab, setTab] = useState<"pos" | "history">("pos");
+  const [staffCanMakeSales, setStaffCanMakeSales] = useState(true);
+  const canMakeSales = user?.role !== "staff" || staffCanMakeSales;
+  const availableTabs: Array<"pos" | "history"> = canMakeSales ? ["pos", "history"] : ["history"];
 
   // POS state
   const [products, setProducts] = useState<Product[]>([]);
@@ -352,9 +355,43 @@ export default function Sales() {
   const [page, setPage] = useState(1);
   const [count, setCount] = useState(0);
 
+  useEffect(() => {
+    if (user?.role !== "staff") {
+      setStaffCanMakeSales(true);
+      return;
+    }
+
+    let ignore = false;
+
+    api.get("/shops/")
+      .then(({ data }) => {
+        if (!ignore) {
+          setStaffCanMakeSales(data.allow_staff_sales !== false);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      ignore = true;
+    };
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (!canMakeSales && tab === "pos") {
+      setTab("history");
+    }
+  }, [canMakeSales, tab]);
+
   // Load products for POS
   useEffect(() => {
     let ignore = false;
+
+    if (!canMakeSales) {
+      setProducts([]);
+      setProductsLoading(false);
+      return;
+    }
+
     setProductsLoading(true);
 
     api.get("/inventory/products/", { params: { search: deferredSearch } })
@@ -375,7 +412,7 @@ export default function Sales() {
     return () => {
       ignore = true;
     };
-  }, [deferredSearch]);
+  }, [deferredSearch, canMakeSales]);
 
   // Load sales history
   const fetchSales = () => {
@@ -399,6 +436,11 @@ export default function Sales() {
   };
 
   const openCollectPayment = (sale: Sale) => {
+    if (!canMakeSales) {
+      error("Staff sales access is disabled for this shop.");
+      return;
+    }
+
     setPaymentAmount("");
     setPaymentNote("");
     setCollectingPayment(sale);
@@ -406,6 +448,10 @@ export default function Sales() {
 
   const handleRecordPayment = async () => {
     if (!collectingPayment) return;
+    if (!canMakeSales) {
+      error("Staff sales access is disabled for this shop.");
+      return;
+    }
 
     const amount = Number.parseFloat(paymentAmount);
     const balance = getBalanceOwed(collectingPayment);
@@ -439,6 +485,11 @@ export default function Sales() {
 
   const handleReturnItem = async () => {
     if (!returningItem) return;
+    if (!canMakeSales) {
+      error("Staff sales access is disabled for this shop.");
+      return;
+    }
+
     setReturnSubmitting(true);
     try {
       const { data } = await api.post(`/sales/${returningItem.sale.id}/return_item/`, {
@@ -495,6 +546,7 @@ export default function Sales() {
 
   // Cart operations
   const addToCart = (product: Product) => {
+    if (!canMakeSales) return;
     if (product.quantity === 0) return;
     setCart((prev) => {
       const existing = prev.find((i) => i.product?.id === product.id && !i.is_custom);
@@ -517,6 +569,7 @@ export default function Sales() {
   };
 
   const addCustomToCart = () => {
+    if (!canMakeSales) return;
     if (!customItem.name.trim() || isNaN(parseFloat(customItem.price))) return;
     setCart((prev) => [...prev, {
       product: null,
@@ -534,6 +587,7 @@ export default function Sales() {
   // Barcode scanning logic
   useBarcodeScanner({
     onScan: (barcode) => {
+      if (!canMakeSales) return;
       if (tab !== "pos") return;
       // Find product by SKU
       const product = products.find((p) => p.sku === barcode);
@@ -596,6 +650,11 @@ export default function Sales() {
 
   const handleCheckout = async () => {
     if (cart.length === 0) return;
+    if (!canMakeSales) {
+      error("Staff sales access is disabled for this shop.");
+      return;
+    }
+
     if (isCredit && !customerPhone) {
       error("Credit sales require a customer phone number.");
       return;
@@ -664,7 +723,7 @@ export default function Sales() {
         {/* Tab switcher */}
         <div className="flex overflow-x-auto hide-scrollbar rounded-xl p-1 gap-1"
           style={{ backgroundColor: "var(--color-surface)", border: "1px solid var(--color-border)" }}>
-          {(["pos", "history"] as const).map((t) => (
+          {availableTabs.map((t) => (
             <button key={t} onClick={() => setTab(t)}
               className="px-4 py-2 rounded-lg text-sm font-medium transition-all capitalize"
               style={{
@@ -676,6 +735,12 @@ export default function Sales() {
           ))}
         </div>
       </div>
+
+      {!canMakeSales && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+          Staff sales access is disabled for this shop. You can review sales history, but only admins can process sales actions.
+        </div>
+      )}
 
       {/* ── POS Tab ── */}
       {tab === "pos" && (
@@ -1106,7 +1171,7 @@ export default function Sales() {
                           style={{ backgroundColor: "#eff6ff", border: "1px solid #bfdbfe" }}>
                           View
                         </button>
-                        {hasOutstandingBalance(sale) && (
+                        {canMakeSales && hasOutstandingBalance(sale) && (
                           <button
                             onClick={() => openCollectPayment(sale)}
                             className="text-xs px-3 py-2 rounded-lg font-medium text-amber-800"
@@ -1176,7 +1241,7 @@ export default function Sales() {
                                 style={{ backgroundColor: "#eff6ff", border: "1px solid #bfdbfe" }}>
                                 View
                               </button>
-                              {hasOutstandingBalance(sale) && (
+                              {canMakeSales && hasOutstandingBalance(sale) && (
                                 <button
                                   onClick={() => openCollectPayment(sale)}
                                   className="text-xs px-2.5 py-1.5 rounded-lg font-medium text-amber-800"
@@ -1255,10 +1320,10 @@ export default function Sales() {
         <Receipt
           sale={receipt}
           onClose={() => setReceipt(null)}
-          onCollectPayment={(sale) => {
+          onCollectPayment={canMakeSales ? (sale) => {
             setReceipt(null);
             openCollectPayment(sale);
-          }}
+          } : undefined}
         />
       )}
 
@@ -1267,15 +1332,15 @@ export default function Sales() {
         <Receipt 
           sale={selectedSale} 
           onClose={() => setSelectedSale(null)} 
-          onCollectPayment={(sale) => {
+          onCollectPayment={canMakeSales ? (sale) => {
             setSelectedSale(null);
             openCollectPayment(sale);
-          }}
-          onReturnItem={(item) => {
+          } : undefined}
+          onReturnItem={canMakeSales ? (item) => {
             setReturningItem({ sale: selectedSale, item });
             setReturnQuantity("1");
             setReturnRestock(true);
-          }}
+          } : undefined}
         />
       )}
 

@@ -227,6 +227,7 @@ export default function Settings() {
     name: "", address: "", phone: "", email: "", description: "",
     enable_sms_notifications: false,
     allow_staff_inventory_management: false,
+    allow_staff_sales: true,
   });
   const [shopSaving, setShopSaving] = useState(false);
   const [shopSaved, setShopSaved] = useState(false);
@@ -275,6 +276,7 @@ export default function Settings() {
         description: data.description || "",
         enable_sms_notifications: data.enable_sms_notifications || false,
         allow_staff_inventory_management: data.allow_staff_inventory_management || false,
+        allow_staff_sales: data.allow_staff_sales !== false,
       }))
       .catch(() => {});
 
@@ -733,6 +735,26 @@ export default function Settings() {
                 </label>
               </div>
 
+              <div className="pt-4 pb-2 border-t mt-4" style={{ borderColor: 'var(--color-border)' }}>
+                <label className="flex items-start sm:items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={shop.allow_staff_sales}
+                    onChange={(e) => setShop({ ...shop, allow_staff_sales: e.target.checked })}
+                    className="w-5 h-5 mt-0.5 sm:mt-0 rounded text-primary focus:ring-primary shrink-0 border"
+                    style={{ backgroundColor: 'var(--color-bg)', borderColor: 'var(--color-border)' }}
+                  />
+                  <div>
+                    <span className="text-sm font-medium flex items-center gap-2" style={{ color: "var(--color-text)" }}>
+                      Allow Staff Sales Access
+                    </span>
+                    <p className="text-xs mt-1" style={{ color: "var(--color-muted)" }}>
+                      When enabled, staff members can use POS, collect credit payments, and process returns. When disabled, admins handle sales actions.
+                    </p>
+                  </div>
+                </label>
+              </div>
+
               <SaveButton onClick={handleSaveShop} saving={shopSaving} saved={shopSaved} />
             </Card>
           </div>
@@ -789,7 +811,7 @@ export default function Settings() {
                         onChange={(e) => setStaffForm({ ...staffForm, role: e.target.value })}
                         className="w-full px-4 py-2.5 rounded-xl text-sm outline-none"
                         style={inputStyle}>
-                        <option value="staff">Staff (Sales & Inventory)</option>
+                        <option value="staff">Staff (permissions from Shop Details)</option>
                         <option value="technician">Technician (Repairs)</option>
                       </select>
                     </Field>

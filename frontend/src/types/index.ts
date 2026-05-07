@@ -29,6 +29,9 @@ export interface Shop {
   subscription_is_active: boolean;
   is_in_trial: boolean;
   subscription_expires_at: string | null;
+  allow_staff_sales: boolean;
+  allow_staff_inventory_management: boolean;
+  enable_sms_notifications: boolean;
 }
 
 export interface Category {

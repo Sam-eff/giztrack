@@ -80,6 +80,21 @@ class SalePaymentFlowTests(APITestCase):
         self.assertEqual(self.sale.payments.count(), 1)
         self.assertIn("outstanding balance", response.data["error"])
 
+    def test_record_payment_respects_staff_sales_setting(self):
+        self.shop.allow_staff_sales = False
+        self.shop.save(update_fields=["allow_staff_sales"])
+
+        response = self.client.post(
+            f"/api/v1/sales/{self.sale.id}/record-payment/",
+            {"amount": "1500.00", "note": "Customer paid more"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.sale.refresh_from_db()
+        self.assertEqual(str(self.sale.amount_paid), "1000.00")
+        self.assertEqual(self.sale.payments.count(), 1)
+
 
 class SalePlanAccessTests(APITestCase):
     def setUp(self):
@@ -223,3 +238,67 @@ class SalePlanAccessTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(response.data["error"], "Applying discounts requires the Pro plan.")
+
+
+class StaffSalesAccessTests(APITestCase):
+    def setUp(self):
+        self.shop = Shop.objects.create(
+            name="Restricted Shop",
+            owner_name="Owner",
+            email="restricted@example.com",
+            phone="08012345678",
+            allow_staff_sales=False,
+        )
+        self.staff = CustomUser.objects.create_user(
+            email="staff@restricted.com",
+            password="StrongPass123!",
+            first_name="Sales",
+            last_name="Staff",
+            shop=self.shop,
+            role=Role.STAFF,
+        )
+        self.admin = CustomUser.objects.create_user(
+            email="owner@restricted.com",
+            password="StrongPass123!",
+            first_name="Shop",
+            last_name="Owner",
+            shop=self.shop,
+            role=Role.ADMIN,
+        )
+
+    def _sale_payload(self):
+        return {
+            "items": [
+                {
+                    "product_name": "Quick Service Fee",
+                    "unit_price": "2500.00",
+                    "quantity": 1,
+                }
+            ],
+            "is_credit": False,
+        }
+
+    def test_staff_cannot_create_sale_when_setting_is_disabled(self):
+        self.client.force_authenticate(user=self.staff)
+
+        response = self.client.post(
+            "/api/v1/sales/",
+            self._sale_payload(),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(Sale.objects.filter(shop=self.shop).count(), 0)
+        self.assertIn("Staff members are not allowed", response.data["error"])
+
+    def test_admin_can_create_sale_when_staff_setting_is_disabled(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            "/api/v1/sales/",
+            self._sale_payload(),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(Sale.objects.filter(shop=self.shop).count(), 1)

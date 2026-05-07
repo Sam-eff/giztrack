@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from utils.mixins import ShopScopedMixin
 from utils.permissions import IsAdminOrStaff
+from apps.accounts.models import Role
 from apps.inventory.models import Product, StockLog
 from apps.customers.models import Customer
 from .models import Sale, SaleItem, SalePayment
@@ -50,11 +51,32 @@ class SaleViewSet(ShopScopedMixin, viewsets.ModelViewSet):
         )
         return self.get_serializer(sale).data
 
+    def _staff_sales_denied_response(self):
+        user = self.request.user
+        shop = getattr(user, "shop", None)
+
+        if user.role == Role.STAFF and shop and not shop.allow_staff_sales:
+            return Response(
+                {
+                    "error": (
+                        "Staff members are not allowed to make sales. "
+                        "Ask an admin to enable staff sales access."
+                    )
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        return None
+
     def create(self, request, *args, **kwargs):
         """
         POS sale creation — fully atomic.
         If any product is out of stock, the whole sale is rolled back.
         """
+        denied_response = self._staff_sales_denied_response()
+        if denied_response:
+            return denied_response
+
         serializer = CreateSaleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -232,6 +254,10 @@ class SaleViewSet(ShopScopedMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def return_item(self, request, pk=None):
+        denied_response = self._staff_sales_denied_response()
+        if denied_response:
+            return denied_response
+
         sale = self.get_object()
         item_id = request.data.get("sale_item_id")
         try:
@@ -315,6 +341,10 @@ class SaleViewSet(ShopScopedMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="record-payment")
     def record_payment(self, request, pk=None):
+        denied_response = self._staff_sales_denied_response()
+        if denied_response:
+            return denied_response
+
         serializer = RecordSalePaymentSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         amount = serializer.validated_data["amount"]
