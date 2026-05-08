@@ -13,7 +13,8 @@ class ShopSerializer(serializers.ModelSerializer):
             "address", "logo", "is_active",
             "subscription_expires_at", "subscription_is_active",
             "is_in_trial", "enable_sms_notifications",
-            "allow_staff_inventory_management", "allow_staff_sales", "created_at",
+            "allow_staff_inventory_management", "allow_staff_sales",
+            "allow_staff_expense_logging", "created_at",
         ]
         read_only_fields = [
             "id", "email", "is_active",
@@ -29,7 +30,7 @@ class ShopUpdateSerializer(serializers.ModelSerializer):
         fields = [
             "name", "owner_name", "phone", "address", "logo",
             "enable_sms_notifications", "allow_staff_inventory_management",
-            "allow_staff_sales",
+            "allow_staff_sales", "allow_staff_expense_logging",
         ]
 
     def validate_phone(self, value):

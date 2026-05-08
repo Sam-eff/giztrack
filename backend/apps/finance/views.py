@@ -1,4 +1,6 @@
 from rest_framework import viewsets, permissions
+from rest_framework.exceptions import PermissionDenied
+from apps.accounts.models import Role
 from utils.permissions import IsAdminOrStaff, IsSameShop, IsProPlan
 from .models import Expense
 from .serializers import ExpenseSerializer
@@ -21,8 +23,27 @@ class ExpenseViewSet(viewsets.ModelViewSet):
             
         return qs
 
+    def _enforce_staff_expense_logging_allowed(self):
+        user = self.request.user
+        shop = getattr(user, "shop", None)
+
+        if user.role == Role.STAFF and shop and not shop.allow_staff_expense_logging:
+            raise PermissionDenied(
+                "Staff members are not allowed to log expenses. "
+                "Ask an admin to enable staff expense logging."
+            )
+
     def perform_create(self, serializer):
+        self._enforce_staff_expense_logging_allowed()
         serializer.save(
             shop=self.request.user.shop,
             logged_by=self.request.user
         )
+
+    def perform_update(self, serializer):
+        self._enforce_staff_expense_logging_allowed()
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._enforce_staff_expense_logging_allowed()
+        instance.delete()

@@ -5,6 +5,7 @@ import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
 import type { Expense } from "../types";
 import Pagination from "../components/Pagination";
+import { getApiErrorMessage } from "../utils/http";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const inputStyle = {
@@ -54,10 +55,12 @@ const fmt = (n: number | string) =>
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function Expenses() {
-  const { isPro } = useAuth();
+  const { user, isPro } = useAuth();
   const { success, error } = useToast();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [staffCanLogExpenses, setStaffCanLogExpenses] = useState(true);
+  const canLogExpenses = user?.role !== "staff" || staffCanLogExpenses;
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   
@@ -84,6 +87,33 @@ export default function Expenses() {
     { id: "marketing", label: "Marketing" },
     { id: "miscellaneous", label: "Miscellaneous" },
   ];
+
+  useEffect(() => {
+    if (user?.role !== "staff") {
+      setStaffCanLogExpenses(true);
+      return;
+    }
+
+    let ignore = false;
+
+    api.get("/shops/")
+      .then(({ data }) => {
+        if (!ignore) {
+          setStaffCanLogExpenses(data.allow_staff_expense_logging !== false);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      ignore = true;
+    };
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (!canLogExpenses && formVisible) {
+      setFormVisible(false);
+    }
+  }, [canLogExpenses, formVisible]);
 
   const fetchExpenses = () => {
     if (!isPro) {
@@ -114,6 +144,11 @@ export default function Expenses() {
     if (!isPro) {
       return;
     }
+    if (!canLogExpenses) {
+      error("Staff expense logging is disabled for this shop.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       await api.post("/finance/expenses/", {
@@ -130,8 +165,8 @@ export default function Expenses() {
       setPage(1);
       fetchExpenses();
       success("Expense logged successfully!");
-    } catch (err: any) {
-      error("Failed to log expense.");
+    } catch (err: unknown) {
+      error(getApiErrorMessage(err, "Failed to log expense."));
     } finally {
       setSubmitting(false);
     }
@@ -183,13 +218,21 @@ export default function Expenses() {
             Track your shop's operational costs to calculate true net profit
           </p>
         </div>
-        <button
-          onClick={() => setFormVisible(true)}
-          className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white whitespace-nowrap"
-          style={{ background: "linear-gradient(135deg, var(--color-primary), var(--color-primary))" }}>
-          + Log Expense
-        </button>
+        {canLogExpenses && (
+          <button
+            onClick={() => setFormVisible(true)}
+            className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white whitespace-nowrap"
+            style={{ background: "linear-gradient(135deg, var(--color-primary), var(--color-primary))" }}>
+            + Log Expense
+          </button>
+        )}
       </div>
+
+      {!canLogExpenses && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+          Staff expense logging is disabled for this shop. You can review expenses, but only admins can add entries.
+        </div>
+      )}
 
       {/* Filter Bar */}
       <div className="flex flex-col gap-3 p-4 rounded-2xl sm:flex-row sm:items-center sm:justify-between"

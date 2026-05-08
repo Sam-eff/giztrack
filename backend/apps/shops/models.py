@@ -22,6 +22,7 @@ class Shop(models.Model):
     enable_sms_notifications = models.BooleanField(default=False)
     allow_staff_inventory_management = models.BooleanField(default=False)
     allow_staff_sales = models.BooleanField(default=True)
+    allow_staff_expense_logging = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

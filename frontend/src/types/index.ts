@@ -30,6 +30,7 @@ export interface Shop {
   is_in_trial: boolean;
   subscription_expires_at: string | null;
   allow_staff_sales: boolean;
+  allow_staff_expense_logging: boolean;
   allow_staff_inventory_management: boolean;
   enable_sms_notifications: boolean;
 }
