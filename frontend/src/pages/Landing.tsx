@@ -36,14 +36,19 @@ export default function Landing() {
 
   const features = [
     {
-      title: "Inventory Management",
-      desc: "Track every product, category, and variant. Get automatic low-stock alerts before you run out.",
+      title: "Inventory & Serial Tracking",
+      desc: "Track general stock or individual IMEI/Serial numbers. Get automatic alerts before you run out.",
       icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />,
     },
     {
       title: "Point of Sale",
-      desc: "Ring up walk-in sales in seconds. Auto-generate receipts and track daily revenue in real time.",
+      desc: "Ring up sales in seconds, link exact IMEIs to receipts, and track revenue in real time.",
       icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />,
+    },
+    {
+      title: "Procurement & Suppliers",
+      desc: "Create purchase orders, manage your wholesalers, and receive units securely into stock.",
+      icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />,
     },
     {
       title: "Repair Ticketing",
@@ -223,7 +228,7 @@ export default function Landing() {
               lineHeight: 1.7, color: "var(--color-muted)",
               maxWidth: 480, marginInline: "auto", marginBottom: 28,
             }}>
-              Inventory, sales, repairs and customers — all in one platform built for Nigerian tech shops.
+              Inventory, IMEI tracking, sales, repairs, and procurement — all in one platform built for modern tech shops.
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>

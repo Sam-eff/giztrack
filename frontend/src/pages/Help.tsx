@@ -11,7 +11,8 @@ export default function Help() {
   const [activeTab, setActiveTab] = useState("inventory");
 
   const tabs = [
-    { id: "inventory", label: "Inventory" },
+    { id: "inventory", label: "Inventory & Tracking" },
+    { id: "procurement", label: "Procurement & Suppliers" },
     { id: "sales", label: "Sales (POS)" },
     { id: "repairs", label: "Repairs" },
     { id: "general", label: "General & Admin" },
@@ -73,6 +74,40 @@ export default function Help() {
                   Open the <strong>History</strong> view for any product to review previous stock movements. This is useful for internal control, reconciliation, and verifying whether stock was added, sold, removed, or damaged.
                 </p>
               </div>
+
+              <div className="space-y-3">
+                <h3 className="font-semibold text-lg" style={{ color: "var(--color-text)" }}>Serialized Tracking (IMEI / Serial Numbers)</h3>
+                <p className="text-sm leading-relaxed" style={{ color: "var(--color-muted)" }}>
+                  Giztrack supports tracking individual units (e.g., phones, laptops) using their exact IMEI or serial number. Switch to the <strong>Tracked Units</strong> view to add or manage these individual items. Serialized items allow you to track the exact supplier it was purchased from, the customer it was sold to, and the warranty status of that specific device.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "procurement" && (
+            <div className="space-y-6">
+              <h2 className="text-xl font-bold mb-4" style={{ color: "var(--color-primary)" }}>Procurement & Suppliers</h2>
+
+              <div className="space-y-3">
+                <h3 className="font-semibold text-lg" style={{ color: "var(--color-text)" }}>Managing Suppliers</h3>
+                <p className="text-sm leading-relaxed" style={{ color: "var(--color-muted)" }}>
+                  Keep track of all the vendors and wholesalers you do business with. From the Procurement page, select the <strong>Suppliers</strong> tab to add new suppliers, including their contact information and payment terms. This helps you track exactly who provides your stock.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="font-semibold text-lg" style={{ color: "var(--color-text)" }}>Creating Purchase Orders</h3>
+                <p className="text-sm leading-relaxed" style={{ color: "var(--color-muted)" }}>
+                  Switch to the <strong>Purchase Orders</strong> tab to create new orders. You can select a supplier and add multiple products to the order, specifying the quantity ordered and the agreed-upon unit cost. This creates a formal record of your planned stock purchases.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="font-semibold text-lg" style={{ color: "var(--color-text)" }}>Receiving Items</h3>
+                <p className="text-sm leading-relaxed" style={{ color: "var(--color-muted)" }}>
+                  When the ordered items arrive at your shop, click <strong>Receive Items</strong> on the corresponding Purchase Order. You can enter the quantity received to automatically update your general inventory stock levels. If the items are tracked by serial number (like phones), you can enter the list of IMEIs directly during receiving, and the system will register each unique device into your Tracked Units inventory automatically linked to the supplier!
+                </p>
+              </div>
             </div>
           )}
 
@@ -83,7 +118,7 @@ export default function Help() {
               <div className="space-y-3">
                 <h3 className="font-semibold text-lg" style={{ color: "var(--color-text)" }}>Recording a Sale</h3>
                 <p className="text-sm leading-relaxed" style={{ color: "var(--color-muted)" }}>
-                  Open the <strong>Sales</strong> page and search for items by name, SKU, or barcode. Add the required products to the cart, confirm the quantity, and complete checkout. Where permitted on your plan, you may also apply discounts or add custom sale items where necessary.
+                  Open the <strong>Sales</strong> page and search for items by name, SKU, or barcode. Add the required products to the cart, confirm the quantity, and complete checkout. If you are selling an IMEI-tracked item, the system will prompt you to select the exact serial number being sold to ensure it is correctly marked as sold and removed from inventory.
                 </p>
               </div>
 
