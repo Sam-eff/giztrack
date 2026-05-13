@@ -37,6 +37,7 @@ urlpatterns = [
     path(f"{API_PREFIX}auth/", include('apps.accounts.urls')),
     path(f"{API_PREFIX}shops/", include('apps.shops.urls')),
     path(f"{API_PREFIX}inventory/", include('apps.inventory.urls')),
+    path(f"{API_PREFIX}suppliers/", include('apps.suppliers.urls')),
     path(f"{API_PREFIX}sales/", include('apps.sales.urls')),
     path(f"{API_PREFIX}repairs/", include('apps.repairs.urls')),
     path(f"{API_PREFIX}customers/", include('apps.customers.urls')),

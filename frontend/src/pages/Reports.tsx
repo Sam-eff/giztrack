@@ -8,6 +8,7 @@ import {
 import ProFeatureOverlay from "../components/ProFeatureOverlay";
 import Pagination from "../components/Pagination";
 import { useAuth } from "../context/AuthContext";
+import type { Product, ProductUnit } from "../types";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const fmt = (n: number | string) =>
@@ -84,6 +85,93 @@ interface CreditSummary {
   total_credit_sales: number;
   total_outstanding: number;
 }
+
+interface InventoryTrackingSummary {
+  total_stock: number;
+  tracked_stock: number;
+  tracked_available: number;
+  tracked_held: number;
+  untracked_stock: number;
+  tracked_sold: number;
+  missing_supplier_units: number;
+  tracking_coverage_percent: number;
+}
+
+interface InventoryTrackingProduct {
+  id: number;
+  name: string;
+  category: string;
+  quantity: number;
+  tracked_stock: number;
+  tracked_available: number;
+  tracked_held: number;
+  untracked_stock: number;
+}
+
+interface InventoryTrackingReport {
+  summary: InventoryTrackingSummary;
+  products: InventoryTrackingProduct[];
+}
+
+const emptyInventoryTracking: InventoryTrackingReport = {
+  summary: {
+    total_stock: 0,
+    tracked_stock: 0,
+    tracked_available: 0,
+    tracked_held: 0,
+    untracked_stock: 0,
+    tracked_sold: 0,
+    missing_supplier_units: 0,
+    tracking_coverage_percent: 0,
+  },
+  products: [],
+};
+
+const trackedStockStatuses = new Set<ProductUnit["status"]>(["in_stock", "returned", "reserved", "defective"]);
+const trackedAvailableStatuses = new Set<ProductUnit["status"]>(["in_stock", "returned"]);
+
+const buildInventoryTrackingFromUnits = (
+  products: Product[],
+  unitsByProduct: Map<number, ProductUnit[]>,
+): InventoryTrackingReport => {
+  const summary = { ...emptyInventoryTracking.summary };
+  const rows = products.map((product) => {
+    const units = unitsByProduct.get(product.id) || [];
+    const trackedStock = units.filter((unit) => trackedStockStatuses.has(unit.status)).length;
+    const trackedAvailable = units.filter((unit) => trackedAvailableStatuses.has(unit.status)).length;
+    const trackedHeld = Math.max(trackedStock - trackedAvailable, 0);
+    const trackedSold = units.filter((unit) => unit.status === "sold").length;
+    const untrackedStock = Math.max(product.quantity - trackedStock, 0);
+
+    summary.total_stock += product.quantity;
+    summary.tracked_stock += trackedStock;
+    summary.tracked_available += trackedAvailable;
+    summary.tracked_held += trackedHeld;
+    summary.untracked_stock += untrackedStock;
+    summary.tracked_sold += trackedSold;
+    summary.missing_supplier_units += units.filter((unit) => !unit.supplier_name).length;
+
+    return {
+      id: product.id,
+      name: product.name,
+      category: product.category_name || "Uncategorised",
+      quantity: product.quantity,
+      tracked_stock: trackedStock,
+      tracked_available: trackedAvailable,
+      tracked_held: trackedHeld,
+      untracked_stock: untrackedStock,
+    };
+  });
+
+  summary.tracking_coverage_percent = summary.total_stock > 0
+    ? Math.round((Math.min(summary.tracked_stock, summary.total_stock) / summary.total_stock) * 1000) / 10
+    : 0;
+
+  return {
+    summary,
+    products: rows.sort((a, b) => b.untracked_stock - a.untracked_stock || b.quantity - a.quantity),
+  };
+};
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const COLORS = ["var(--color-primary)", "#16a34a", "#f59e0b", "#d946ef", "#8b5cf6", "#06b6d4"];
@@ -252,6 +340,7 @@ export default function Reports() {
     total_credit_sales: 0,
     total_outstanding: 0,
   });
+  const [inventoryTracking, setInventoryTracking] = useState<InventoryTrackingReport>(emptyInventoryTracking);
   const [repairStatuses, setRepairStatuses] = useState<{name: string, value: number}[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -277,32 +366,88 @@ export default function Reports() {
     setLoading(true);
     try {
       const params = { period, from: dateFrom, to: dateTo };
-      const [salesRes, bestRes, techRes, lowRes, creditRes, dashRes] = await Promise.all([
+      const [salesRes, bestRes, techRes, lowRes, creditRes, dashRes, trackingRes] = await Promise.allSettled([
         api.get("/reports/sales/", { params }),
         api.get("/reports/products/best-selling/", { params }),
         api.get("/reports/technicians/", { params }),
         api.get("/reports/inventory/low-stock/"),
         api.get("/reports/customers/credit/", { params }),
         api.get("/reports/dashboard/"), 
+        api.get("/reports/inventory/tracking/"),
       ]);
-      setSalesReport(salesRes.data.breakdown || []);
-      setSalesSummary(salesRes.data.summary || null);
-      setBestSellers(bestRes.data.results || bestRes.data || []);
-      setTechStats(techRes.data.results || techRes.data || []);
-      setLowStock(lowRes.data.results || lowRes.data || []);
-      setCreditCustomers(creditRes.data.results || []);
-      setCreditSummary(creditRes.data.summary || {
-        customers_with_balance: 0,
-        total_credit_sales: 0,
-        total_outstanding: 0,
-      });
-      
-      const repairsByStatus = dashRes.data?.repairs?.by_status || {};
+
+      if (salesRes.status === "fulfilled") {
+        setSalesReport(salesRes.value.data.breakdown || []);
+        setSalesSummary(salesRes.value.data.summary || null);
+      }
+      if (bestRes.status === "fulfilled") {
+        setBestSellers(bestRes.value.data.results || bestRes.value.data || []);
+      }
+      if (techRes.status === "fulfilled") {
+        setTechStats(techRes.value.data.results || techRes.value.data || []);
+      }
+      if (lowRes.status === "fulfilled") {
+        setLowStock(lowRes.value.data.results || lowRes.value.data || []);
+      }
+      if (creditRes.status === "fulfilled") {
+        setCreditCustomers(creditRes.value.data.results || []);
+        setCreditSummary(creditRes.value.data.summary || {
+          customers_with_balance: 0,
+          total_credit_sales: 0,
+          total_outstanding: 0,
+        });
+      } else {
+        setCreditSummary({
+          customers_with_balance: 0,
+          total_credit_sales: 0,
+          total_outstanding: 0,
+        });
+      }
+
+      if (trackingRes.status === "fulfilled") {
+        setInventoryTracking(trackingRes.value.data || emptyInventoryTracking);
+      } else {
+        try {
+          const productsRes = await api.get("/inventory/products/", { params: { page_size: 500 } });
+          const fallbackProducts: Product[] = productsRes.data.results || productsRes.data || [];
+          const unitResults = await Promise.allSettled(
+            fallbackProducts.map(async (product) => {
+              const unitsRes = await api.get("/inventory/units/", {
+                params: { product: product.id, page_size: 500 },
+              });
+              const units: ProductUnit[] = Array.isArray(unitsRes.data.results)
+                ? unitsRes.data.results
+                : Array.isArray(unitsRes.data)
+                  ? unitsRes.data
+                  : [];
+              return { productId: product.id, units };
+            }),
+          );
+          const unitsByProduct = new Map<number, ProductUnit[]>();
+          unitResults.forEach((result) => {
+            if (result.status === "fulfilled") {
+              unitsByProduct.set(result.value.productId, result.value.units);
+            }
+          });
+          setInventoryTracking(buildInventoryTrackingFromUnits(fallbackProducts, unitsByProduct));
+        } catch {
+          // keep the last known tracking report if fallback cannot load
+        }
+      }
+
+      const repairsByStatus = dashRes.status === "fulfilled"
+        ? dashRes.value.data?.repairs?.by_status || {}
+        : {};
       setRepairStatuses(Object.entries(repairsByStatus).map(([status, count]) => ({
         name: status.replace("_", " ").toUpperCase(),
         value: Number(count)
       })).filter(s => s.value > 0));
     } catch {
+      setCreditSummary({
+        customers_with_balance: 0,
+        total_credit_sales: 0,
+        total_outstanding: 0,
+      });
     } finally {
       setLoading(false);
     }
@@ -394,6 +539,8 @@ export default function Reports() {
   const totalProfit = salesSummary?.total_net_profit || 0;
   const totalSales = salesSummary?.total_sales || 0;
   const margin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : "0";
+  const trackingSummary = inventoryTracking.summary;
+  const productsNeedingTracking = inventoryTracking.products.filter((product) => product.untracked_stock > 0);
 
   if (!isPro) {
     return (
@@ -556,6 +703,87 @@ export default function Reports() {
               </div>
             ))}
           </div>
+
+          <Card>
+            <SectionTitle
+              title="Inventory Tracking Coverage"
+              subtitle="Current stock split between exact IMEI/serial records and older untracked stock"
+            />
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+              {[
+                { label: "Total Stock", value: trackingSummary.total_stock, tone: "var(--color-primary)" },
+                { label: "Tracked Stock", value: trackingSummary.tracked_stock, tone: "#16a34a" },
+                { label: "Exact Sellable", value: trackingSummary.tracked_available, tone: "#0284c7" },
+                { label: "Held", value: trackingSummary.tracked_held, tone: "#d97706" },
+                { label: "Untracked", value: trackingSummary.untracked_stock, tone: "#dc2626" },
+                { label: "Sold Tracked", value: trackingSummary.tracked_sold, tone: "#7c3aed" },
+              ].map((item) => (
+                <div key={item.label} className="rounded-2xl border border-app bg-app p-4 min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted">{item.label}</p>
+                  <p className="mt-2 font-display text-2xl font-extrabold tabular-nums" style={{ color: item.tone }}>
+                    {item.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-2xl border border-app bg-app p-4 mb-6">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-bold text-app">
+                  Coverage: {trackingSummary.tracking_coverage_percent}%
+                </p>
+                <p className="text-xs text-muted">
+                  {trackingSummary.tracked_stock} of {trackingSummary.total_stock} current stock units are tracked.
+                </p>
+              </div>
+              <div className="mt-4 h-2.5 rounded-full bg-surface border border-app overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-primary"
+                  style={{ width: `${Math.min(Math.max(trackingSummary.tracking_coverage_percent, 0), 100)}%` }}
+                />
+              </div>
+              {trackingSummary.missing_supplier_units > 0 && (
+                <p className="mt-3 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                  {trackingSummary.missing_supplier_units} tracked unit(s) still need supplier links.
+                </p>
+              )}
+            </div>
+
+            {productsNeedingTracking.length > 0 && (
+              <div className="w-full overflow-x-auto overflow-y-hidden rounded-2xl border border-app">
+                <table className="w-full min-w-[720px] text-left bg-surface">
+                  <thead className="bg-app">
+                    <tr>
+                      {["Product", "Stock", "Tracked", "Exact Sellable", "Held", "Untracked"].map((heading) => (
+                        <th key={heading} className="px-5 py-4 text-xs font-bold uppercase tracking-widest text-muted whitespace-nowrap">
+                          {heading}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-app">
+                    {productsNeedingTracking.slice(0, 10).map((product) => (
+                      <tr key={product.id} className="hover:bg-app/50 transition-colors">
+                        <td className="px-5 py-4">
+                          <p className="font-bold text-sm text-app">{product.name}</p>
+                          <p className="text-xs text-muted mt-0.5">{product.category}</p>
+                        </td>
+                        <td className="px-5 py-4 text-sm font-semibold text-app">{product.quantity}</td>
+                        <td className="px-5 py-4 text-sm font-semibold text-app">{product.tracked_stock}</td>
+                        <td className="px-5 py-4 text-sm font-semibold text-green-700 dark:text-green-400">{product.tracked_available}</td>
+                        <td className="px-5 py-4 text-sm font-semibold text-amber-700 dark:text-amber-400">{product.tracked_held}</td>
+                        <td className="px-5 py-4">
+                          <span className="inline-flex whitespace-nowrap text-sm font-black px-2.5 py-1 bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 rounded-lg">
+                            {product.untracked_stock}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
 
           <Card>
             <SectionTitle

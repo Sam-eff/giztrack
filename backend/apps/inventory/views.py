@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import F
+from django.db.models import Count, F, Q
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,10 +7,11 @@ from rest_framework.permissions import IsAuthenticated
 
 from utils.mixins import ShopScopedMixin
 from utils.permissions import IsAdmin, IsAdminOrStaff, IsAdminOrStaffWithInventoryPerms
-from .models import Category, Product, StockLog
+from .models import Category, Product, ProductUnit, StockLog
 from .serializers import (
     CategorySerializer,
     ProductSerializer,
+    ProductUnitSerializer,
     StockAdjustSerializer,
     StockLogSerializer,
 )
@@ -35,13 +36,45 @@ class ProductViewSet(ShopScopedMixin, viewsets.ModelViewSet):
         return self.get_serializer(refreshed).data
 
     def get_queryset(self):
-        qs = super().get_queryset().filter(is_active=True)
+        tracked_stock_statuses = [
+            ProductUnit.Status.IN_STOCK,
+            ProductUnit.Status.RETURNED,
+            ProductUnit.Status.RESERVED,
+            ProductUnit.Status.DEFECTIVE,
+        ]
+        tracked_available_statuses = [
+            ProductUnit.Status.IN_STOCK,
+            ProductUnit.Status.RETURNED,
+        ]
+
+        qs = super().get_queryset().filter(is_active=True).annotate(
+            tracked_units_count=Count("units", distinct=True),
+            tracked_in_stock_count=Count(
+                "units",
+                filter=Q(units__status__in=tracked_available_statuses),
+                distinct=True,
+            ),
+            tracked_available_count=Count(
+                "units",
+                filter=Q(units__status__in=tracked_available_statuses),
+                distinct=True,
+            ),
+            tracked_stock_count=Count(
+                "units",
+                filter=Q(units__status__in=tracked_stock_statuses),
+                distinct=True,
+            ),
+            tracked_sold_count=Count(
+                "units",
+                filter=Q(units__status=ProductUnit.Status.SOLD),
+                distinct=True,
+            ),
+        )
         category = self.request.query_params.get("category")
         search = self.request.query_params.get("search")
         if category:
             qs = qs.filter(category_id=category)
         if search:
-            from django.db.models import Q
             qs = qs.filter(
                 Q(name__icontains=search) |
                 Q(sku__icontains=search) |
@@ -152,3 +185,106 @@ class StockLogViewSet(viewsets.ReadOnlyModelViewSet):
         return StockLog.objects.filter(
             product__shop=self.request.user.shop
         ).select_related("product", "created_by")
+
+
+class ProductUnitViewSet(viewsets.ModelViewSet):
+    """CRUD for individual IMEI/serial-tracked units."""
+    serializer_class = ProductUnitSerializer
+    permission_classes = [IsAuthenticated, IsAdminOrStaffWithInventoryPerms]
+
+    def get_queryset(self):
+        return ProductUnit.objects.filter(
+            product__shop=self.request.user.shop
+        ).select_related(
+            "product", "supplier", "purchase_order", "sale", "sold_to"
+        )
+
+    def get_filtered_queryset(self):
+        qs = self.get_queryset()
+        search = self.request.query_params.get("search")
+        product_id = self.request.query_params.get("product")
+        status_filter = self.request.query_params.get("status")
+        condition = self.request.query_params.get("condition")
+        supplier_id = self.request.query_params.get("supplier")
+
+        if search:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(imei_1__icontains=search)
+                | Q(imei_2__icontains=search)
+                | Q(serial_number__icontains=search)
+                | Q(product__name__icontains=search)
+            )
+        if product_id:
+            qs = qs.filter(product_id=product_id)
+        if status_filter:
+            statuses = [status.strip() for status in status_filter.split(",") if status.strip()]
+            qs = qs.filter(status__in=statuses)
+        if condition:
+            qs = qs.filter(condition=condition)
+        if supplier_id:
+            qs = qs.filter(supplier_id=supplier_id)
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        qs = self.get_filtered_queryset()
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    def perform_create(self, serializer):
+        # Validate product belongs to user's shop
+        product = serializer.validated_data.get("product")
+        if product and product.shop != self.request.user.shop:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("Product does not belong to your shop.")
+        serializer.save()
+
+    @action(detail=False, methods=["get"], url_path="lookup")
+    def lookup_by_imei(self, request):
+        """
+        Look up a unit by IMEI or serial number.
+        Usage: GET /inventory/units/lookup/?imei=353456789012345
+        """
+        imei = request.query_params.get("imei", "").strip()
+        serial = request.query_params.get("serial", "").strip()
+
+        if not imei and not serial:
+            return Response(
+                {"error": "Provide ?imei= or ?serial= to search."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = self.get_queryset()
+        if imei:
+            from django.db.models import Q
+            qs = qs.filter(Q(imei_1=imei) | Q(imei_2=imei) | Q(serial_number=imei))
+        elif serial:
+            qs = qs.filter(serial_number=serial)
+
+        unit = qs.first()
+        if not unit:
+            return Response(
+                {"error": "No unit found with that identifier."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response(self.get_serializer(unit).data)
+
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        """Summary counts by status for the shop."""
+        qs = self.get_queryset()
+        from django.db.models import Count
+        by_status = (
+            qs.values("status")
+            .annotate(count=Count("id"))
+            .order_by("status")
+        )
+        return Response({
+            "total": qs.count(),
+            "by_status": {item["status"]: item["count"] for item in by_status},
+        })

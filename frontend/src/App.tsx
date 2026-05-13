@@ -22,6 +22,7 @@ const Terms = lazy(() => import("./pages/Terms"));
 const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Inventory = lazy(() => import("./pages/Inventory"));
+const Suppliers = lazy(() => import("./pages/Suppliers"));
 const Sales = lazy(() => import("./pages/Sales"));
 const Repairs = lazy(() => import("./pages/Repairs"));
 const Customers = lazy(() => import("./pages/Customers"));
@@ -140,6 +141,7 @@ export default function App() {
         >
           <Route path="dashboard" element={withSuspense(<Dashboard />, <DashboardSkeleton />)} />
           <Route path="inventory" element={withSuspense(<Inventory />, <PageSkeleton />)} />
+          <Route path="suppliers" element={withSuspense(<Suppliers />, <PageSkeleton />)} />
           <Route path="sales" element={withSuspense(<Sales />, <PageSkeleton />)} />
           <Route path="repairs" element={withSuspense(<Repairs />, <PageSkeleton />)} />
           <Route path="customers" element={withSuspense(<Customers />, <PageSkeleton />)} />

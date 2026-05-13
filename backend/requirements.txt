@@ -18,3 +18,4 @@ reportlab
 whitenoise
 pygments
 sentry-sdk
+python-dateutil

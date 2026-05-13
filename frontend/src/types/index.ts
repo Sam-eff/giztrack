@@ -57,6 +57,12 @@ export interface Product {
   quantity: number;
   low_stock_threshold: number;
   is_low_stock: boolean;
+  tracked_units_count?: number;
+  tracked_in_stock_count?: number;
+  tracked_available_count?: number;
+  tracked_stock_count?: number;
+  tracked_sold_count?: number;
+  untracked_stock_count?: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -71,6 +77,23 @@ export interface Customer {
   created_at: string;
 }
 
+export interface SoldUnit {
+  id: number;
+  identifier: string;
+  imei_1: string;
+  imei_2: string;
+  serial_number: string;
+  status: string;
+  status_display: string;
+  supplier_name: string | null;
+  warranty_months: number;
+  warranty_expiry: string | null;
+  condition: string;
+  condition_display: string;
+  color: string;
+  storage: string;
+}
+
 export interface SaleItem {
   id: number;
   product: number | null;
@@ -83,6 +106,7 @@ export interface SaleItem {
   is_custom: boolean;
   subtotal: number;
   profit: number;
+  sold_units?: SoldUnit[];
 }
 
 export interface SalePayment {
@@ -176,6 +200,82 @@ export interface Expense {
   date: string;
   logged_by: number;
   logged_by_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Supplier {
+  id: number;
+  name: string;
+  contact_person: string;
+  phone: string;
+  email: string;
+  address: string;
+  payment_terms: string;
+  notes: string;
+  is_active: boolean;
+  total_orders: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PurchaseOrderItem {
+  id: number;
+  product: number | null;
+  product_name: string;
+  quantity_ordered: number;
+  quantity_received: number;
+  unit_cost: string;
+  subtotal: number;
+  is_fully_received: boolean;
+  created_at: string;
+}
+
+export interface PurchaseOrder {
+  id: number;
+  supplier: number;
+  supplier_name: string;
+  order_number: string;
+  status: "draft" | "ordered" | "partially_received" | "received" | "cancelled";
+  status_display: string;
+  total_cost: string;
+  notes: string;
+  ordered_at: string | null;
+  received_at: string | null;
+  created_by: number | null;
+  created_by_name: string | null;
+  items: PurchaseOrderItem[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductUnit {
+  id: number;
+  product: number;
+  product_name: string;
+  imei_1: string;
+  imei_2: string;
+  serial_number: string;
+  condition: "new" | "refurbished" | "used";
+  condition_display: string;
+  status: "in_stock" | "sold" | "reserved" | "returned" | "defective";
+  status_display: string;
+  supplier: number | null;
+  supplier_name: string | null;
+  purchase_order: number | null;
+  purchase_price: string | null;
+  sale: number | null;
+  sold_to: number | null;
+  sold_to_name: string | null;
+  sold_at: string | null;
+  selling_price_actual: string | null;
+  warranty_months: number;
+  warranty_is_active: boolean;
+  warranty_expiry: string | null;
+  color: string;
+  storage: string;
+  notes: string;
+  identifier: string;
   created_at: string;
   updated_at: string;
 }

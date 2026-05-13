@@ -2,7 +2,7 @@ import { useDeferredValue, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import type { Customer, Product, Sale, SaleItem } from "../types";
+import type { Customer, Product, ProductUnit, Sale, SaleItem } from "../types";
 import api from "../api/axios";
 import CustomerLookup from "../components/CustomerLookup";
 import Pagination from "../components/Pagination";
@@ -20,6 +20,8 @@ interface CartItem {
   quantity: number;
   is_custom: boolean;
   product_image?: string | null;
+  unit_ids?: number[];
+  unit_labels?: string[];
 }
 
 interface ReceiptShop {
@@ -85,6 +87,45 @@ const getBalanceOwed = (sale: Pick<Sale, "balance_owed">) =>
 
 const hasOutstandingBalance = (sale: Sale) =>
   sale.is_credit && getBalanceOwed(sale) > 0;
+
+const getTrackedInStock = (product: Product) =>
+  product.tracked_available_count ?? product.tracked_in_stock_count ?? 0;
+
+const getUntrackedStock = (product: Product) =>
+  product.untracked_stock_count ?? Math.max(product.quantity - (product.tracked_stock_count ?? getTrackedInStock(product)), 0);
+
+const getTrackedHeld = (product: Product) =>
+  Math.max((product.tracked_stock_count ?? getTrackedInStock(product)) - getTrackedInStock(product), 0);
+
+const getTrackingStatusText = (product: Product) => {
+  const tracked = getTrackedInStock(product);
+  const untracked = getUntrackedStock(product);
+  const held = getTrackedHeld(product);
+  const heldText = held > 0 ? ` • ${held} held` : "";
+  if (tracked === 0 && untracked === 0) return held > 0 ? `${held} held` : "No stock";
+  if (tracked === 0) return `${untracked} untracked${heldText}`;
+  if (untracked === 0) return `${tracked} exact unit${tracked === 1 ? "" : "s"}${heldText}`;
+  return `${tracked} exact • ${untracked} untracked${heldText}`;
+};
+
+const trackedStockStatuses = new Set<ProductUnit["status"]>(["in_stock", "returned", "reserved", "defective"]);
+const trackedAvailableStatuses = new Set<ProductUnit["status"]>(["in_stock", "returned"]);
+
+const mergeUnitCoverage = (product: Product, units: ProductUnit[]): Product => {
+  const trackedStock = units.filter((unit) => trackedStockStatuses.has(unit.status)).length;
+  const trackedAvailable = units.filter((unit) => trackedAvailableStatuses.has(unit.status)).length;
+  const trackedSold = units.filter((unit) => unit.status === "sold").length;
+
+  return {
+    ...product,
+    tracked_units_count: units.length,
+    tracked_in_stock_count: trackedAvailable,
+    tracked_available_count: trackedAvailable,
+    tracked_stock_count: trackedStock,
+    tracked_sold_count: trackedSold,
+    untracked_stock_count: Math.max(product.quantity - trackedStock, 0),
+  };
+};
 
 // ── Receipt Component ─────────────────────────────────────────────────────────
 function Receipt({
@@ -191,6 +232,21 @@ function Receipt({
                         </button>
                       )}
                     </div>
+                    {item.sold_units && item.sold_units.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {item.sold_units.map((unit) => (
+                          <span
+                            key={unit.id}
+                            className="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[9px] font-bold text-gray-700"
+                          >
+                            {unit.identifier}
+                            {[unit.color, unit.storage].filter(Boolean).length > 0
+                              ? ` (${[unit.color, unit.storage].filter(Boolean).join(", ")})`
+                              : ""}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -332,6 +388,11 @@ export default function Sales() {
   // Custom Item Modal state
   const [showCustomItem, setShowCustomItem] = useState(false);
   const [customItem, setCustomItem] = useState({ name: "", price: "" });
+  const [unitPicker, setUnitPicker] = useState<{
+    product: Product;
+    units: ProductUnit[];
+    loading: boolean;
+  } | null>(null);
 
   // History state
   const [sales, setSales] = useState<Sale[]>([]);
@@ -397,7 +458,36 @@ export default function Sales() {
     api.get("/inventory/products/", { params: { search: deferredSearch } })
       .then(({ data }) => {
         if (ignore) return;
-        setProducts(data.results || data);
+        const fetchedProducts: Product[] = data.results || data;
+        setProducts(fetchedProducts);
+        void Promise.allSettled(
+          fetchedProducts.map(async (product) => {
+            const unitsRes = await api.get("/inventory/units/", {
+              params: { product: product.id, page_size: 500 },
+            });
+            const units: ProductUnit[] = Array.isArray(unitsRes.data.results)
+              ? unitsRes.data.results
+              : Array.isArray(unitsRes.data)
+                ? unitsRes.data
+                : [];
+            return { productId: product.id, units };
+          }),
+        ).then((results) => {
+          if (ignore) return;
+          const coverage = new Map<number, ProductUnit[]>();
+          results.forEach((result) => {
+            if (result.status === "fulfilled") {
+              coverage.set(result.value.productId, result.value.units);
+            }
+          });
+          if (coverage.size === 0) return;
+          setProducts((prev) =>
+            prev.map((product) => {
+              const units = coverage.get(product.id);
+              return units ? mergeUnitCoverage(product, units) : product;
+            }),
+          );
+        });
       })
       .catch(() => {
         if (ignore) return;
@@ -492,10 +582,15 @@ export default function Sales() {
 
     setReturnSubmitting(true);
     try {
+      const quantityToReturn = parseInt(returnQuantity, 10);
+      const unitIdsToReturn = returningItem.item.sold_units
+        ?.slice(0, quantityToReturn)
+        .map((unit) => unit.id);
       const { data } = await api.post(`/sales/${returningItem.sale.id}/return_item/`, {
         sale_item_id: returningItem.item.id,
-        quantity: parseInt(returnQuantity),
-        restock: returnRestock
+        quantity: quantityToReturn,
+        restock: returnRestock,
+        unit_ids: unitIdsToReturn && unitIdsToReturn.length > 0 ? unitIdsToReturn : undefined,
       });
       syncSaleInState(data.sale);
       success("Item returned successfully");
@@ -548,12 +643,24 @@ export default function Sales() {
   const addToCart = (product: Product) => {
     if (!canMakeSales) return;
     if (product.quantity === 0) return;
+    const untrackedAvailable = getUntrackedStock(product);
+    if (untrackedAvailable <= 0) {
+      warning("No untracked stock is available for this product. Select an exact IMEI/serial instead.");
+      return;
+    }
     setCart((prev) => {
-      const existing = prev.find((i) => i.product?.id === product.id && !i.is_custom);
+      const existing = prev.find((i) =>
+        i.product?.id === product.id && !i.is_custom && (i.unit_ids?.length || 0) === 0
+      );
       if (existing) {
-        if (existing.quantity >= product.quantity) return prev;
+        if (existing.quantity >= untrackedAvailable) {
+          warning(`Only ${untrackedAvailable} untracked unit(s) available for ${product.name}.`);
+          return prev;
+        }
         return prev.map((i) =>
-          i.product?.id === product.id && !i.is_custom ? { ...i, quantity: i.quantity + 1 } : i
+          i.product?.id === product.id && !i.is_custom && (i.unit_ids?.length || 0) === 0
+            ? { ...i, quantity: i.quantity + 1 }
+            : i
         );
       }
       return [...prev, {
@@ -564,8 +671,126 @@ export default function Sales() {
         quantity: 1,
         is_custom: false,
         product_image: product.image,
+        unit_ids: [],
+        unit_labels: [],
       }];
     });
+  };
+
+  const addSerializedUnitToCart = (product: Product, unit: ProductUnit, displayCode = unit.identifier) => {
+    if (!canMakeSales) return;
+    if (product.quantity === 0) {
+      warning("Product is out of stock or unavailable.");
+      return;
+    }
+
+    setCart(prev => {
+      const existingIdx = prev.findIndex(i =>
+        !i.is_custom && i.product?.id === product.id && (i.unit_ids?.length || 0) > 0
+      );
+      if (existingIdx >= 0) {
+        const item = prev[existingIdx];
+        const unitIds = item.unit_ids || [];
+        if (unitIds.includes(unit.id)) {
+          warning("This unit is already in the cart.");
+          return prev;
+        }
+        const newQty = item.quantity + 1;
+        if (newQty > product.quantity) return prev;
+        const newCart = [...prev];
+        newCart[existingIdx] = {
+          ...item,
+          quantity: newQty,
+          unit_ids: [...unitIds, unit.id],
+          unit_labels: [...(item.unit_labels || []), unit.identifier],
+        };
+        success(`Added ${product.name} (IMEI/Serial: ${displayCode})`);
+        return newCart;
+      }
+
+      success(`Added ${product.name} (IMEI/Serial: ${displayCode})`);
+      return [...prev, {
+        product,
+        product_name: product.name,
+        unit_price: parseFloat(product.selling_price),
+        unit_cost: parseFloat(product.cost_price),
+        quantity: 1,
+        is_custom: false,
+        product_image: product.image,
+        unit_ids: [unit.id],
+        unit_labels: [unit.identifier],
+      }];
+    });
+  };
+
+  const openUnitPickerForProduct = async (product: Product) => {
+    if (!canMakeSales) return;
+    if (product.quantity === 0) return;
+
+    setUnitPicker({ product, units: [], loading: true });
+    try {
+      const { data } = await api.get("/inventory/units/", {
+        params: { product: product.id, status: "in_stock,returned" },
+      });
+      const units: ProductUnit[] = data.results || data;
+      if (units.length === 0) {
+        setUnitPicker(null);
+        if (getUntrackedStock(product) > 0) {
+          warning("No exact sellable units are registered for this product. Selling from untracked stock.");
+          addToCart(product);
+        } else {
+          warning("No sellable stock is available for this product.");
+        }
+        return;
+      }
+      setUnitPicker({ product, units, loading: false });
+    } catch {
+      setUnitPicker(null);
+      addToCart(product);
+    }
+  };
+
+  const selectUnitFromPicker = (unit: ProductUnit) => {
+    if (!unitPicker) return;
+    addSerializedUnitToCart(unitPicker.product, unit);
+    setUnitPicker((prev) => {
+      if (!prev) return prev;
+      const remaining = prev.units.filter((item) => item.id !== unit.id);
+      return remaining.length === 0 ? null : { ...prev, units: remaining };
+    });
+  };
+
+  const addUnitToCart = async (barcode: string) => {
+    try {
+      const { data: unitData } = await api.get<ProductUnit>(`/inventory/units/lookup/?imei=${barcode}`);
+      if (unitData.status !== "in_stock") {
+        warning(`Unit is currently marked as ${unitData.status_display}`);
+        return;
+      }
+      
+      // We need the full product details
+      const existingProduct = products.find(p => p.id === unitData.product);
+      let product = existingProduct;
+      if (!product) {
+        const { data: prodData } = await api.get(`/inventory/products/${unitData.product}/`);
+        product = prodData;
+        if (product) {
+            setProducts(prev => [...prev, product as Product]);
+        }
+      }
+
+      if (!product || product.quantity === 0) {
+        warning("Product is out of stock or unavailable.");
+        return;
+      }
+
+      addSerializedUnitToCart(product, unitData, barcode);
+    } catch {
+      // Lookup failed
+      setProductsLoading(true);
+      setPendingScannedBarcode(barcode);
+      setSearch(barcode);
+    }
   };
 
   const addCustomToCart = () => {
@@ -589,14 +814,13 @@ export default function Sales() {
     onScan: (barcode) => {
       if (!canMakeSales) return;
       if (tab !== "pos") return;
-      // Find product by SKU
+      // First check product SKU
       const product = products.find((p) => p.sku === barcode);
       if (product) {
-        addToCart(product);
+        void openUnitPickerForProduct(product);
       } else {
-        setProductsLoading(true);
-        setPendingScannedBarcode(barcode);
-        setSearch(barcode);
+        // Not a direct SKU match, try looking up as IMEI/Serial
+        void addUnitToCart(barcode);
       }
     },
   });
@@ -606,7 +830,7 @@ export default function Sales() {
 
     const product = products.find((item) => item.sku === pendingScannedBarcode);
     if (product) {
-      addToCart(product);
+      void openUnitPickerForProduct(product);
     } else if (search === pendingScannedBarcode) {
       warning(`Scanned product not found: ${pendingScannedBarcode}`);
     }
@@ -622,8 +846,26 @@ export default function Sales() {
     setCart((prev) =>
       prev.map((item, i) => {
         if (i !== index) return item;
+        if ((item.unit_ids?.length || 0) > 0) {
+          if (quantity > (item.unit_ids?.length || 0)) {
+            warning("Scan the next IMEI/serial before increasing this line.");
+            return item;
+          }
+          return {
+            ...item,
+            quantity,
+            unit_ids: item.unit_ids?.slice(0, quantity),
+            unit_labels: item.unit_labels?.slice(0, quantity),
+          };
+        }
         // Check stock limit for inventory items
-        if (!item.is_custom && item.product && quantity > item.product.quantity) return item;
+        if (!item.is_custom && item.product) {
+          const untrackedLimit = getUntrackedStock(item.product);
+          if (quantity > untrackedLimit) {
+            warning(`Only ${untrackedLimit} untracked unit(s) available for ${item.product_name}.`);
+            return item;
+          }
+        }
         return { ...item, quantity };
       })
     );
@@ -655,6 +897,14 @@ export default function Sales() {
       return;
     }
 
+    const incompleteTrackedLine = cart.find((item) =>
+      (item.unit_ids?.length || 0) > 0 && item.unit_ids?.length !== item.quantity
+    );
+    if (incompleteTrackedLine) {
+      error(`Scan ${incompleteTrackedLine.quantity} exact unit(s) for ${incompleteTrackedLine.product_name}.`);
+      return;
+    }
+
     if (isCredit && !customerPhone) {
       error("Credit sales require a customer phone number.");
       return;
@@ -675,7 +925,8 @@ export default function Sales() {
             ? i.unit_price
             : undefined,
           unit_price: i.unit_price,
-          quantity: i.quantity
+          quantity: i.quantity,
+          unit_ids: i.unit_ids && i.unit_ids.length > 0 ? i.unit_ids : undefined
         })),
         customer_phone: customerPhone,
         customer_name: customerName || customerPhone,
@@ -757,7 +1008,7 @@ export default function Sales() {
                 </svg>
                 <input
                   value={search} onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search products by name or SKU..."
+                  placeholder="Search product, SKU, IMEI, or serial..."
                   className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
                   style={inputStyle}
                 />
@@ -773,7 +1024,7 @@ export default function Sales() {
 
             <BarcodeScannerNotice
               title="Use the barcode scanner on New Sale"
-              description="Scan while your cursor is not inside any input box. If the scanned code matches a product SKU, Giztrack adds the item to the cart automatically. If the item is not already visible, Giztrack searches for it first."
+              description="Scan a product SKU to add stock, or scan an IMEI/serial to attach the exact device to the sale."
             />
 
             {/* Product grid */}
@@ -781,8 +1032,10 @@ export default function Sales() {
               {products.map((product) => {
                 const inCart = cart.find((i) => !i.is_custom && i.product?.id === product.id);
                 const outOfStock = product.quantity === 0;
+                const trackedInStock = getTrackedInStock(product);
+                const untrackedStock = getUntrackedStock(product);
                 return (
-                  <button key={product.id} onClick={() => addToCart(product)}
+                  <button key={product.id} onClick={() => void openUnitPickerForProduct(product)}
                     disabled={outOfStock}
                     className="text-left p-4 rounded-xl transition-all relative"
                     style={{
@@ -817,11 +1070,23 @@ export default function Sales() {
                         {product.brand}
                       </p>
                     )}
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {trackedInStock > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold">
+                          Select exact unit
+                        </span>
+                      )}
+                      {untrackedStock > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 border border-amber-200 font-semibold">
+                          Untracked stock
+                        </span>
+                      )}
+                    </div>
                     <p className="text-sm font-bold mt-2 text-primary">
                       {fmt(product.selling_price)}
                     </p>
                     <p className="text-xs mt-0.5" style={{ color: product.is_low_stock ? "#dc2626" : "var(--color-muted)" }}>
-                      {outOfStock ? "Out of stock" : `${product.quantity} in stock`}
+                      {outOfStock ? "Out of stock" : `${product.quantity} in stock • ${getTrackingStatusText(product)}`}
                     </p>
                   </button>
                 );
@@ -890,11 +1155,23 @@ export default function Sales() {
                           <p className="text-sm font-semibold leading-snug" style={{ color: "var(--color-text)" }}>
                             {item.product_name}
                           </p>
-                          {item.is_custom && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-violet-100 text-violet-700 border border-violet-200 font-semibold">
-                              Custom Item
-                            </span>
-                          )}
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {item.is_custom && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-violet-100 text-violet-700 border border-violet-200 font-semibold">
+                                Custom Item
+                              </span>
+                            )}
+                            {!item.is_custom && (item.unit_ids?.length || 0) > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700 border border-emerald-200 font-semibold">
+                                Exact IMEI/Serial
+                              </span>
+                            )}
+                            {!item.is_custom && (item.unit_ids?.length || 0) === 0 && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200 font-semibold">
+                                Untracked Stock
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <button onClick={() => removeFromCart(index)}
                           className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors hover:bg-red-100"
@@ -904,6 +1181,19 @@ export default function Sales() {
                           </svg>
                         </button>
                       </div>
+                      {item.unit_labels && item.unit_labels.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {item.unit_labels.map((label) => (
+                            <span
+                              key={label}
+                              className="px-2 py-1 rounded-lg text-[11px] font-bold break-all"
+                              style={{ backgroundColor: "var(--color-surface)", color: "var(--color-primary)", border: "1px solid var(--color-border)" }}
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {/* Row 2: qty + subtotal */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1">
@@ -1272,6 +1562,111 @@ export default function Sales() {
       )}
       </div>
 
+      {unitPicker && (
+        <Modal title={`Select Exact IMEI/Serial — ${unitPicker.product.name}`} onClose={() => setUnitPicker(null)}>
+          <div className="space-y-4">
+            <div className="rounded-xl p-4"
+              style={{ backgroundColor: "var(--color-bg)", border: "1px solid var(--color-border)" }}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: "var(--color-primary)" }}>
+                    Pick the physical unit for this sale
+                  </p>
+                  <p className="text-sm font-semibold" style={{ color: "var(--color-text)" }}>
+                    {unitPicker.product.brand || unitPicker.product.category_name || "Product"}
+                    {unitPicker.product.product_model ? ` • ${unitPicker.product.product_model}` : ""}
+                    {unitPicker.product.color ? ` • ${unitPicker.product.color}` : ""}
+                  </p>
+                  <p className="text-xs mt-1" style={{ color: "var(--color-muted)" }}>
+                    {unitPicker.product.quantity} total in stock • {getTrackingStatusText(unitPicker.product)}
+                  </p>
+                </div>
+                <span className="text-sm font-bold text-primary">{fmt(unitPicker.product.selling_price)}</span>
+              </div>
+            </div>
+
+            {unitPicker.loading ? (
+              <div className="flex items-center justify-center h-28">
+                <svg className="animate-spin w-6 h-6 text-primary" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--color-muted)" }}>
+                    Available exact units
+                  </p>
+                  <span className="text-xs font-bold text-primary">{unitPicker.units.length} selectable</span>
+                </div>
+                <div className="space-y-2 max-h-[45vh] overflow-y-auto touch-scroll pr-1">
+                  {unitPicker.units.map((unit) => (
+                    <button
+                      key={unit.id}
+                      type="button"
+                      onClick={() => selectUnitFromPicker(unit)}
+                      className="w-full text-left rounded-xl p-3 transition-colors hover:bg-primary/5"
+                      style={{ backgroundColor: "var(--color-bg)", border: "1px solid var(--color-border)" }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold break-all" style={{ color: "var(--color-text)" }}>
+                            {unit.identifier}
+                          </p>
+                          <p className="text-xs mt-1" style={{ color: "var(--color-muted)" }}>
+                            {[unit.color || unitPicker.product.color, unit.storage, unit.condition_display, unit.supplier_name]
+                              .filter(Boolean)
+                              .join(" • ") || "No extra details"}
+                          </p>
+                          {unit.purchase_price && (
+                            <p className="text-[11px] mt-1 font-medium text-green-600">
+                              Cost: {fmt(unit.purchase_price)}
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200 shrink-0">
+                          {unit.status_display}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (getUntrackedStock(unitPicker.product) <= 0) return;
+                  addToCart(unitPicker.product);
+                  setUnitPicker(null);
+                }}
+                disabled={getUntrackedStock(unitPicker.product) <= 0}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+                style={{
+                  backgroundColor: "var(--color-bg)",
+                  border: "1px solid var(--color-border)",
+                  color: "var(--color-text)",
+                  opacity: getUntrackedStock(unitPicker.product) <= 0 ? 0.55 : 1,
+                }}
+              >
+                {getUntrackedStock(unitPicker.product) > 0 ? "Sell Untracked Stock" : "No Untracked Stock"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setUnitPicker(null)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white"
+                style={{ backgroundColor: "var(--color-primary)" }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* Custom Item Modal */}
       {showCustomItem && (
         <Modal title="Add Custom Item" onClose={() => setShowCustomItem(false)}>
@@ -1435,6 +1830,23 @@ export default function Sales() {
               <p className="text-xs mt-1" style={{ color: "var(--color-muted)" }}>
                 Refunding {fmt(returningItem.item.unit_price)} per item.
               </p>
+              {returningItem.item.sold_units && returningItem.item.sold_units.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {returningItem.item.sold_units.map((unit) => (
+                    <span
+                      key={unit.id}
+                      className="rounded-lg px-2 py-1 text-[11px] font-bold"
+                      style={{
+                        backgroundColor: "color-mix(in srgb, var(--color-surface) 82%, transparent)",
+                        border: "1px solid var(--color-border)",
+                        color: "var(--color-text)",
+                      }}
+                    >
+                      {unit.identifier}
+                    </span>
+                  ))}
+                </div>
+              )}
               {parsedReturnQuantity > 0 && (
                 <div
                   className="mt-3 flex items-center justify-between rounded-xl px-3 py-2 text-sm"

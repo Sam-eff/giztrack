@@ -11,6 +11,10 @@ class SaleItemInputSerializer(serializers.Serializer):
     product_id = serializers.IntegerField(required=False, allow_null=True)
     quantity = serializers.IntegerField(min_value=1)
     custom_price = serializers.DecimalField(max_digits=12, decimal_places=2, required=False, allow_null=True, min_value=0)
+    unit_ids = serializers.ListField(
+        child=serializers.IntegerField(), required=False, allow_empty=True,
+        help_text="IDs of specific ProductUnit records (IMEIs) being sold."
+    )
 
     # Optional fields for custom items
     product_name = serializers.CharField(max_length=200, required=False, allow_blank=True)
@@ -21,6 +25,7 @@ class SaleItemSerializer(serializers.ModelSerializer):
     subtotal = serializers.ReadOnlyField()
     profit = serializers.ReadOnlyField()
     product_image = serializers.SerializerMethodField()
+    sold_units = serializers.SerializerMethodField()
 
     class Meta:
         model = SaleItem
@@ -28,6 +33,7 @@ class SaleItemSerializer(serializers.ModelSerializer):
             "id", "product", "product_name", "product_image",
             "quantity", "unit_price", "unit_cost",
             "is_custom", "subtotal", "profit", "returned_quantity",
+            "sold_units",
         ]
 
     def get_product_image(self, obj):
@@ -35,6 +41,31 @@ class SaleItemSerializer(serializers.ModelSerializer):
         if obj.product and obj.product.image:
             return request.build_absolute_uri(obj.product.image.url) if request else obj.product.image.url
         return None
+
+    def get_sold_units(self, obj):
+        if not obj.product_id:
+            return []
+
+        units = obj.sale.units_sold.filter(product_id=obj.product_id)
+        return [
+            {
+                "id": unit.id,
+                "identifier": unit.identifier,
+                "imei_1": unit.imei_1,
+                "imei_2": unit.imei_2,
+                "serial_number": unit.serial_number,
+                "status": unit.status,
+                "status_display": unit.get_status_display(),
+                "supplier_name": unit.supplier.name if unit.supplier else None,
+                "warranty_months": unit.warranty_months,
+                "warranty_expiry": unit.warranty_expiry,
+                "condition": unit.condition,
+                "condition_display": unit.get_condition_display(),
+                "color": unit.color,
+                "storage": unit.storage,
+            }
+            for unit in units
+        ]
 
 
 class SalePaymentSerializer(serializers.ModelSerializer):

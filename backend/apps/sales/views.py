@@ -8,7 +8,7 @@ from decimal import Decimal
 from utils.mixins import ShopScopedMixin
 from utils.permissions import IsAdminOrStaff
 from apps.accounts.models import Role
-from apps.inventory.models import Product, StockLog
+from apps.inventory.models import Product, ProductUnit, StockLog
 from apps.customers.models import Customer
 from .models import Sale, SaleItem, SalePayment
 from .serializers import SaleSerializer, CreateSaleSerializer, RecordSalePaymentSerializer
@@ -18,6 +18,7 @@ class SaleViewSet(ShopScopedMixin, viewsets.ModelViewSet):
     queryset = Sale.objects.select_related("customer", "staff").prefetch_related(
         "items__product",
         "payments__received_by",
+        "units_sold__supplier",
     )
     serializer_class = SaleSerializer
     http_method_names = ["get", "post", "head", "options"]  # sales cannot be edited or deleted
@@ -46,7 +47,7 @@ class SaleViewSet(ShopScopedMixin, viewsets.ModelViewSet):
         sale = (
             Sale.objects.filter(shop=self.request.user.shop, id=sale_id)
             .select_related("customer", "staff")
-            .prefetch_related("items__product", "payments__received_by")
+            .prefetch_related("items__product", "payments__received_by", "units_sold__supplier")
             .get()
         )
         return self.get_serializer(sale).data
@@ -130,6 +131,12 @@ class SaleViewSet(ShopScopedMixin, viewsets.ModelViewSet):
                     # Use negotiated price if provided, otherwise use product's selling price
                     custom_price = item_data.get("custom_price")
                     unit_price = Decimal(str(custom_price)) if custom_price is not None else product.selling_price
+                    unit_ids = item_data.get("unit_ids", [])
+                    if unit_ids and len(unit_ids) != qty:
+                        return Response(
+                            {"error": f"Select {qty} exact unit(s) for {product.name}."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
 
                     subtotal = unit_price * qty
                     profit = (unit_price - product.cost_price) * qty
@@ -141,6 +148,7 @@ class SaleViewSet(ShopScopedMixin, viewsets.ModelViewSet):
                         "unit_price": unit_price,
                         "unit_cost": product.cost_price,
                         "is_custom": False,
+                        "unit_ids": unit_ids,
                     })
                 else:
                     if not is_pro:
@@ -161,6 +169,7 @@ class SaleViewSet(ShopScopedMixin, viewsets.ModelViewSet):
                         "unit_price": unit_price,
                         "unit_cost": 0,
                         "is_custom": True,
+                        "unit_ids": [],
                     })
 
                 total_amount += subtotal
@@ -236,6 +245,29 @@ class SaleViewSet(ShopScopedMixin, viewsets.ModelViewSet):
                         note=f"Sale #{sale.id}",
                         created_by=request.user,
                     )
+
+                    # Update specific IMEI-tracked units if provided
+                    from django.utils import timezone
+                    unit_ids = item.get("unit_ids", [])
+                    if unit_ids:
+                        units = ProductUnit.objects.filter(
+                            id__in=unit_ids,
+                            product=product,
+                            status__in=[
+                                ProductUnit.Status.IN_STOCK,
+                                ProductUnit.Status.RETURNED,
+                            ],
+                        )
+                        if units.count() != len(unit_ids):
+                            raise Exception("One or more selected units (IMEIs) are not in stock.")
+                        
+                        units.update(
+                            status=ProductUnit.Status.SOLD,
+                            sale=sale,
+                            sold_to=customer,
+                            sold_at=timezone.now(),
+                            selling_price_actual=item["unit_price"]
+                        )
 
         return Response(
             {
@@ -333,6 +365,15 @@ class SaleViewSet(ShopScopedMixin, viewsets.ModelViewSet):
                     note=f"Return from Sale #{sale.id}",
                     created_by=request.user,
                 )
+
+                # Mark specific IMEIs as returned if provided
+                unit_ids = request.data.get("unit_ids", [])
+                if unit_ids:
+                    ProductUnit.objects.filter(
+                        id__in=unit_ids,
+                        product=product,
+                        sale=sale
+                    ).update(status=ProductUnit.Status.RETURNED)
 
         return Response({
             "message": f"Successfully returned {quantity}x {sale_item.product_name}.",
