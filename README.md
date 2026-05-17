@@ -1,13 +1,6 @@
----
-title: Giztrack Backend
-emoji: 🛠️
-colorFrom: blue
-colorTo: indigo
-sdk: docker
-app_port: 7860
----
 
-# 🛠️ Giztrack
+
+# Giztrack
 
 > A full-stack SaaS point-of-sale and workshop management platform built for tech repair shops in Nigeria.
 
@@ -25,14 +18,14 @@ app_port: 7860
 
 **Giztrack** (codenamed `Giztrack Inventory Management`) is a multi-tenant SaaS platform designed specifically for **tech gadget repair shops** in Nigeria. It provides everything a shop owner needs to run their business digitally:
 
-- 📦 **Inventory** — track stock, set low-stock alerts, manage categories
-- 🛒 **Point of Sale** — process transactions, auto-deduct stock, record profit
-- 🔧 **Repair Tickets** — log device repairs with a full lifecycle workflow from receipt to collection
-- 👥 **Customer Directory** — maintain a database of customers linked to purchases and repairs
-- 📊 **Analytics Hub** — real-time revenue, profit, and performance charts
-- 💳 **Billing** — subscription plans powered by Paystack (Nigerian payment gateway)
-- 👨‍💼 **Multi-User** — admin, staff, and technician roles with scoped access
-- 📱 **SMS Notifications** — automated customer alerts via Africa's Talking
+-  **Inventory** — track stock, set low-stock alerts, manage categories
+- **Point of Sale** — process transactions, auto-deduct stock, record profit
+- **Repair Tickets** — log device repairs with a full lifecycle workflow from receipt to collection
+- **Customer Directory** — maintain a database of customers linked to purchases and repairs
+- **Analytics Hub** — real-time revenue, profit, and performance charts
+- **Billing** — subscription plans powered by Paystack (Nigerian payment gateway)
+- **Multi-User** — admin, staff, and technician roles with scoped access
+- **SMS Notifications** — automated customer alerts via Africa's Talking
 
 ---
 
