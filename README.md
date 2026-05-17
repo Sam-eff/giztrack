@@ -90,33 +90,3 @@ app_port: 7860
 | **Docker Compose** | Multi-service orchestration |
 | **Paystack** | Payment gateway (NGN subscriptions) |
 
-## Current Focus
-
-This repository is currently optimized for local Docker development first.
-
-- Primary app URL: `http://localhost/`
-- Fast dev mode URL: `http://localhost:5173/`
-- Old Vercel/Hugging Face deployment glue has been retired from the active workflow
-- Future production target: Cloudflare + Railway after the local stack is stable
-
-## Local Docker Modes
-
-Giztrack now has two separate local Docker workflows:
-
-- `http://localhost/`
-  This is the production-like Docker stack from [docker-compose.yml](/Users/samuel/Documents/Techshopmananger/docker-compose.yml). Frontend changes require a rebuild because Nginx serves a built bundle.
-
-- `http://localhost:5173/`
-  This is the live-reload Docker dev stack using [docker-compose.dev.yml](/Users/samuel/Documents/Techshopmananger/docker-compose.dev.yml). Frontend changes hot-reload through Vite, and backend changes auto-reload through Django `runserver`.
-
-Use the dev stack when you want the old fast local workflow:
-
-```bash
-docker compose -f docker-compose.dev.yml up --build
-```
-
-Use the production-like stack when you want to test the built app exactly as Docker/Nginx serves it:
-
-```bash
-docker compose up --build
-```
