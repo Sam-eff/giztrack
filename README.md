@@ -1,85 +1,101 @@
-
-
-# Giztrack
-
-> A full-stack SaaS point-of-sale and workshop management platform built for tech repair shops in Nigeria.
-
----
-
-## 📋 Table of Contents
-
-1. [What is Giztrack?](#what-is--manager)
-2. [Key Features](#key-features)
-3. [Tech Stack](#tech-stack)
+<div align="center">
+  <h1>🛠️ Giztrack</h1>
+  <p><strong>A full-stack SaaS point-of-sale, inventory, and workshop management platform built for tech repair shops.</strong></p>
+</div>
 
 ---
 
-## What is Giztrack?
+**Giztrack** is a multi-tenant SaaS platform designed specifically for tech gadget repair shops. It provides everything a shop owner needs to run their business digitally—from tracking stock to printing receipts and sending SMS notifications to customers. 
 
-**Giztrack** (codenamed `Giztrack Inventory Management`) is a multi-tenant SaaS platform designed specifically for **tech gadget repair shops** in Nigeria. It provides everything a shop owner needs to run their business digitally:
+## 🌟 Key Features
 
--  **Inventory** — track stock, set low-stock alerts, manage categories
-- **Point of Sale** — process transactions, auto-deduct stock, record profit
-- **Repair Tickets** — log device repairs with a full lifecycle workflow from receipt to collection
-- **Customer Directory** — maintain a database of customers linked to purchases and repairs
-- **Analytics Hub** — real-time revenue, profit, and performance charts
-- **Billing** — subscription plans powered by Paystack (Nigerian payment gateway)
-- **Multi-User** — admin, staff, and technician roles with scoped access
-- **SMS Notifications** — automated customer alerts via Africa's Talking
+*   🏢 **Multi-Tenant Architecture**: Each registered shop is fully isolated with its own scoped data and dashboard.
+*   📦 **Inventory Management**: Track stock levels in real-time, set low-stock thresholds, and manage product categories.
+*   🛒 **Point of Sale (POS)**: Process transactions, automatically deduct stock, record profit margins, and lock in price snapshots.
+*   🔧 **Repair Ticket System**: Track device repairs through an enforced lifecycle workflow: `Received → Diagnosing → Waiting Parts → Fixed → Collected`.
+*   👥 **Customer Directory**: Maintain a database of customers linked to their purchases, repairs, and contact details.
+*   📊 **Analytics Hub**: Visualize real-time revenue, profit, and performance metrics.
+*   💳 **Subscription Billing**: Automated SaaS subscription plans powered by Paystack.
+*   👨‍💼 **Role-Based Access Control**: Granular permissions for `admin`, `staff`, and `technician` roles.
+*   📱 **Progressive Web App (PWA)**: Installable on mobile and desktop with offline-capable interfaces.
+*   💬 **Automated SMS Notifications**: Keep customers in the loop with automated alerts via Africa's Talking.
+*   ⚙️ **Background Tasks**: Django Q2 handles async tasks like low-stock alerts, subscription reminders, and daily summaries.
+*   🌙 **Modern UI/UX**: Fully responsive, mobile-first design with a dark/light theme toggle.
 
----
-
-## Key Features
-
-| Feature | Description |
-|---|---|
-| **Multi-tenant** | Each registered shop is fully isolated — all data is scoped by `shop` FK |
-| **14-Day Free Trial** | Full access for 14 days from registration; hard paywall after expiry |
-| **Role-Based Access** | `admin`, `staff`, and `technician` roles with fine-grained permissions |
-| **Repair State Machine** | Enforced transitions: `Received → Diagnosing → Waiting Parts → Fixed → Collected` |
-| **Price Snapshotting** | Sale items and repair parts snapshot prices at time of transaction |
-| **Stock Audit Trail** | `StockLog` records every inventory movement with reason and timestamp |
-| **Async Tasks** | Django Q2 handles low-stock alerts, subscription reminders, and daily summaries |
-| **Dark Mode** | Full dark/light theme toggle stored locally |
-| **Responsive UI** | Mobile-first design; tabs, overlays, and navigation all mobile-optimized |
-
----
-
-## Tech Stack
-
-### Backend
-| Technology | Version | Purpose |
-|---|---|---|
-| **Python** | 3.13 | Runtime |
-| **Django** | 6.0.3 | Web framework |
-| **Django REST Framework** | Latest | REST API layer |
-| **djangorestframework-simplejwt** | Latest | JWT authentication |
-| **django-cors-headers** | Latest | CORS support for SPA |
-| **django-environ** | Latest | `.env` file management |
-| **django-jazzmin** | Latest | Custom Django admin UI |
-| **Django Q2** | Latest | Async task queue |
-| **PostgreSQL** | 16 | Production database |
-| **SQLite** | — | Development database |
-| **Gunicorn** | Latest | WSGI server for production |
-| **Africa's Talking** | Latest | SMS notifications |
-| **Pillow** | Latest | Image processing (logos) |
-| **psycopg2** | Latest | PostgreSQL adapter |
+## 🛠️ Tech Stack
 
 ### Frontend
-| Technology | Version | Purpose |
-|---|---|---|
-| **React** | 19.2 | UI framework |
-| **TypeScript** | 5.9 | Type safety |
-| **Vite** | 7 | Build tool & dev server |
-| **Tailwind CSS** | 4 | Utility-first styling |
-| **React Router DOM** | 7 | Client-side routing |
-| **Axios** | 1.13 | HTTP client |
-| **Recharts** | 3.8 | Analytics charts |
+*   **Framework**: React 19.2, TypeScript 5.9
+*   **Build Tool**: Vite 7
+*   **Styling**: Tailwind CSS 4
+*   **Routing & HTTP**: React Router DOM 7, Axios
+*   **Data Visualization**: Recharts
+*   **Monitoring**: Sentry (Browser React)
+
+### Backend
+*   **Framework**: Python 3.13, Django 6.0
+*   **API**: Django REST Framework (DRF)
+*   **Authentication**: djangorestframework-simplejwt
+*   **Database**: PostgreSQL 16 (Production) / SQLite (Development)
+*   **Async Task Queue**: Django Q2
+*   **Static/Media**: Whitenoise, Cloudinary, Pillow
+*   **Integrations**: Africa's Talking (SMS), Paystack (Payments)
+*   **Server**: Gunicorn
 
 ### Infrastructure
-| Technology | Purpose |
-|---|---|
-| **Docker** | Containerisation |
-| **Docker Compose** | Multi-service orchestration |
-| **Paystack** | Payment gateway (NGN subscriptions) |
+*   **Containerization**: Docker, Docker Compose
 
+---
+
+## 🚀 Getting Started
+
+This repository is optimized for local Docker development with two distinct workflows.
+
+### Prerequisites
+*   [Docker](https://docs.docker.com/get-docker/) and Docker Compose installed on your machine.
+*   Node.js (for local frontend development without Docker, if preferred).
+
+### 1. Live-Reload Development Stack (Recommended for Dev)
+Use this mode when actively developing. It provides hot-reloading for the React frontend via Vite (`localhost:5173`) and auto-reloading for the Django backend (`localhost:8000`).
+
+```bash
+# Start the development containers
+docker compose -f docker-compose.dev.yml up --build
+```
+*   **Frontend**: [http://localhost:5173/](http://localhost:5173/)
+*   **Backend API**: [http://localhost:8000/](http://localhost:8000/)
+
+### 2. Production-like Docker Stack
+Use this mode to test the built application exactly as it will be served by Nginx in production.
+
+```bash
+# Start the production-like containers
+docker compose up --build
+```
+*   **Application URL**: [http://localhost/](http://localhost/)
+
+## 🔧 Environment Variables
+
+To run the application, you need to configure your environment variables. 
+Copy the example files and update them with your credentials:
+
+```bash
+# Backend
+cp backend/.env.example backend/.env
+
+# Frontend
+cp frontend/.env.example frontend/.env
+```
+
+Ensure you configure necessary API keys (Paystack, Africa's Talking, Cloudinary, Sentry) for full functionality.
+
+## 📄 Documentation
+
+*   [Production Deployment Guide](./PRODUCTION.md)
+*   [Railway Deployment Guide](./RAILWAY_DEPLOYMENT.md)
+*   [VPS Deployment Guide](./VPS_DEPLOYMENT.md)
+
+---
+<div align="center">
+  <p>Built with ❤️ for tech business shops.</p>
+</div>

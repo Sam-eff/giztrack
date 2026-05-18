@@ -68,3 +68,6 @@ test_*.py
 test_*.json
 
 .md/
+RAILWAY_DEPLOYMENT.md/
+VPS_DEPLOYMENT.md/
+PRODUCTION.md/
