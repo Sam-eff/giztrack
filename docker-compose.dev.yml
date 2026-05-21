@@ -44,20 +44,25 @@ services:
       retries: 5
       start_period: 30s
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   qcluster:
     image: techshopmananger-backend-dev
     command: python manage.py qcluster
     volumes:
       - ./backend:/app
+      - media_files:/app/media
     env_file:
       - ./backend/.env
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings
       - DATABASE_URL=postgres://techshop_user:${DB_PASSWORD:?DB_PASSWORD is required}@db:5432/techshop_db
     depends_on:
-      - backend
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
 
   frontend:
     build:
@@ -83,7 +88,8 @@ services:
       retries: 5
       start_period: 15s
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres_data:

@@ -1,101 +1,83 @@
 <div align="center">
-  <h1>🛠️ Giztrack</h1>
-  <p><strong>A full-stack SaaS point-of-sale, inventory, and workshop management platform built for tech repair shops.</strong></p>
+  <h1>Giztrack</h1>
+  <p><strong>Point-of-sale, inventory, procurement, and repair-shop management for tech repair businesses.</strong></p>
 </div>
 
 ---
 
-**Giztrack** is a multi-tenant SaaS platform designed specifically for tech gadget repair shops. It provides everything a shop owner needs to run their business digitally—from tracking stock to printing receipts and sending SMS notifications to customers. 
+Giztrack is a full-stack SaaS platform for gadget and electronics repair shops.
+It helps shop owners manage sales, stock, serialized devices, repairs, customers,
+suppliers, staff roles, analytics, and subscription access from one dashboard.
 
-## 🌟 Key Features
+The application is built around a multi-tenant model, so each registered shop has
+its own isolated data, users, inventory, reports, and billing state.
 
-*   🏢 **Multi-Tenant Architecture**: Each registered shop is fully isolated with its own scoped data and dashboard.
-*   📦 **Inventory Management**: Track stock levels in real-time, set low-stock thresholds, and manage product categories.
-*   🛒 **Point of Sale (POS)**: Process transactions, automatically deduct stock, record profit margins, and lock in price snapshots.
-*   🔧 **Repair Ticket System**: Track device repairs through an enforced lifecycle workflow: `Received → Diagnosing → Waiting Parts → Fixed → Collected`.
-*   👥 **Customer Directory**: Maintain a database of customers linked to their purchases, repairs, and contact details.
-*   📊 **Analytics Hub**: Visualize real-time revenue, profit, and performance metrics.
-*   💳 **Subscription Billing**: Automated SaaS subscription plans powered by Paystack.
-*   👨‍💼 **Role-Based Access Control**: Granular permissions for `admin`, `staff`, and `technician` roles.
-*   📱 **Progressive Web App (PWA)**: Installable on mobile and desktop with offline-capable interfaces.
-*   💬 **Automated SMS Notifications**: Keep customers in the loop with automated alerts via Africa's Talking.
-*   ⚙️ **Background Tasks**: Django Q2 handles async tasks like low-stock alerts, subscription reminders, and daily summaries.
-*   🌙 **Modern UI/UX**: Fully responsive, mobile-first design with a dark/light theme toggle.
+## Core Features
 
-## 🛠️ Tech Stack
+- Multi-tenant shop accounts with scoped business data
+- Point of sale with receipt-ready sales records and payment tracking
+- Inventory management with stock levels, categories, suppliers, and product images
+- Serialized unit tracking for IMEI/serial-number devices
+- Repair ticket workflow from intake through collection
+- Customer directory linked to purchases and repairs
+- Supplier management and purchase orders
+- Analytics for revenue, profit, expenses, stock, repairs, and customers
+- Role-based access for admins, staff, and technicians
+- Subscription billing integration with Paystack
+- Background tasks with Django Q2
+- Progressive Web App support for installable mobile/desktop use
 
-### Frontend
-*   **Framework**: React 19.2, TypeScript 5.9
-*   **Build Tool**: Vite 7
-*   **Styling**: Tailwind CSS 4
-*   **Routing & HTTP**: React Router DOM 7, Axios
-*   **Data Visualization**: Recharts
-*   **Monitoring**: Sentry (Browser React)
+## Tech Stack
 
-### Backend
-*   **Framework**: Python 3.13, Django 6.0
-*   **API**: Django REST Framework (DRF)
-*   **Authentication**: djangorestframework-simplejwt
-*   **Database**: PostgreSQL 16 (Production) / SQLite (Development)
-*   **Async Task Queue**: Django Q2
-*   **Static/Media**: Whitenoise, Cloudinary, Pillow
-*   **Integrations**: Africa's Talking (SMS), Paystack (Payments)
-*   **Server**: Gunicorn
+| Area | Stack |
+| --- | --- |
+| Frontend | React, TypeScript, Vite, Tailwind CSS, React Router, Axios |
+| Backend | Python 3.12, Django, Django REST Framework |
+| Database | PostgreSQL for Docker/production, SQLite-supported local fallback |
+| Async jobs | Django Q2 |
+| Media/static | Whitenoise, Cloudinary-ready media storage, Pillow |
+| Observability | Sentry-ready frontend and backend configuration |
+| Infrastructure | Docker, Docker Compose, Nginx, Gunicorn |
 
-### Infrastructure
-*   **Containerization**: Docker, Docker Compose
+## Repository Map
 
----
+- `frontend/` - React + Vite application served by Vite in dev and Nginx in production-like Docker.
+- `backend/` - Django API, business apps, authentication, reports, and background jobs.
+- `docker-compose.dev.yml` - hot-reload local development stack.
+- `docker-compose.yml` - production-like local stack with built frontend and Gunicorn backend.
+- `docs/` - development notes for local setup and troubleshooting.
+- `PRODUCTION.md` - production rollout checklist and deployment direction.
 
-## 🚀 Getting Started
+## Local Development
 
-This repository is optimized for local Docker development with two distinct workflows.
+For setup commands, environment variables, Docker workflows, and troubleshooting,
+see [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md).
 
-### Prerequisites
-*   [Docker](https://docs.docker.com/get-docker/) and Docker Compose installed on your machine.
-*   Node.js (for local frontend development without Docker, if preferred).
-
-### 1. Live-Reload Development Stack (Recommended for Dev)
-Use this mode when actively developing. It provides hot-reloading for the React frontend via Vite (`localhost:5173`) and auto-reloading for the Django backend (`localhost:8000`).
+Quick start:
 
 ```bash
-# Start the development containers
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
 docker compose -f docker-compose.dev.yml up --build
 ```
-*   **Frontend**: [http://localhost:5173/](http://localhost:5173/)
-*   **Backend API**: [http://localhost:8000/](http://localhost:8000/)
 
-### 2. Production-like Docker Stack
-Use this mode to test the built application exactly as it will be served by Nginx in production.
+Development URLs:
 
-```bash
-# Start the production-like containers
-docker compose up --build
-```
-*   **Application URL**: [http://localhost/](http://localhost/)
+- Frontend: `http://localhost:5173/`
+- Backend API: `http://localhost:8000/api/v1/health/`
 
-## 🔧 Environment Variables
+## Documentation
 
-To run the application, you need to configure your environment variables. 
-Copy the example files and update them with your credentials:
+- [Development Guide](./docs/DEVELOPMENT.md)
+- [Production Rollout](./PRODUCTION.md)
 
-```bash
-# Backend
-cp backend/.env.example backend/.env
+## Security Notes
 
-# Frontend
-cp frontend/.env.example frontend/.env
-```
-
-Ensure you configure necessary API keys (Paystack, Africa's Talking, Cloudinary, Sentry) for full functionality.
-
-## 📄 Documentation
-
-*   [Production Deployment Guide](./PRODUCTION.md)
-*   [Railway Deployment Guide](./RAILWAY_DEPLOYMENT.md)
-*   [VPS Deployment Guide](./VPS_DEPLOYMENT.md)
+Do not commit real `.env` files, API keys, SMTP credentials, Paystack keys, or
+production secrets. The committed `.env.example` files are templates only.
 
 ---
+
 <div align="center">
-  <p>Built with ❤️ for tech business shops.</p>
+  <p>Built for tech repair shops that need stock, sales, and repairs in one place.</p>
 </div>

@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
@@ -205,6 +205,8 @@ export default function Suppliers() {
 
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const supplierSavePending = useRef(false);
+  const [savingSupplier, setSavingSupplier] = useState(false);
   const [supplierForm, setSupplierForm] = useState({
     name: "",
     contact_person: "",
@@ -216,6 +218,8 @@ export default function Suppliers() {
   });
 
   const [showPOModal, setShowPOModal] = useState(false);
+  const poCreatePending = useRef(false);
+  const [creatingPO, setCreatingPO] = useState(false);
   const [poForm, setPoForm] = useState<{ supplier_id: string; notes: string; items: PoFormItem[] }>({
     supplier_id: "",
     notes: "",
@@ -223,6 +227,8 @@ export default function Suppliers() {
   });
 
   const [receivingPO, setReceivingPO] = useState<PurchaseOrder | null>(null);
+  const receivePending = useRef(false);
+  const [receivingItems, setReceivingItems] = useState(false);
   const [receiveForm, setReceiveForm] = useState<{ items: ReceiveItemDraft[] }>({ items: [] });
 
   const fetchSuppliers = async () => {
@@ -281,6 +287,10 @@ export default function Suppliers() {
 
   const handleSaveSupplier = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (supplierSavePending.current) return;
+
+    supplierSavePending.current = true;
+    setSavingSupplier(true);
     try {
       if (editingSupplier) {
         await api.put(`/suppliers/suppliers/${editingSupplier.id}/`, supplierForm);
@@ -295,12 +305,19 @@ export default function Suppliers() {
       void fetchSuppliers();
     } catch {
       showError("Failed to save supplier");
+    } finally {
+      supplierSavePending.current = false;
+      setSavingSupplier(false);
     }
   };
 
   const handleCreatePO = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!poForm.supplier_id) return showError("Please select a supplier");
+    if (poCreatePending.current) return;
+
+    poCreatePending.current = true;
+    setCreatingPO(true);
     try {
       await api.post("/suppliers/purchase-orders/", poForm);
       success("Purchase order created successfully");
@@ -309,6 +326,9 @@ export default function Suppliers() {
       void fetchPurchaseOrders();
     } catch (err: any) {
       showError(err.response?.data?.detail || "Failed to create PO");
+    } finally {
+      poCreatePending.current = false;
+      setCreatingPO(false);
     }
   };
 
@@ -325,6 +345,10 @@ export default function Suppliers() {
   const handleReceivePO = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!receivingPO) return;
+    if (receivePending.current) return;
+
+    receivePending.current = true;
+    setReceivingItems(true);
     try {
       const payload = {
         items: receiveForm.items.map((item) => ({
@@ -353,6 +377,9 @@ export default function Suppliers() {
       void fetchPurchaseOrders();
     } catch {
       showError("Failed to receive items. Check IMEI requirements.");
+    } finally {
+      receivePending.current = false;
+      setReceivingItems(false);
     }
   };
 
@@ -756,14 +783,21 @@ export default function Suppliers() {
             <div className="flex gap-3 pt-3">
               <button
                 type="button"
+                disabled={savingSupplier}
                 onClick={() => setShowSupplierModal(false)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-medium"
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ backgroundColor: "var(--color-bg)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}
               >
                 Cancel
               </button>
-              <button type="submit" className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: "var(--color-primary)" }}>
-                Save Supplier
+              <button
+                type="submit"
+                disabled={savingSupplier}
+                aria-busy={savingSupplier}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-70 disabled:cursor-not-allowed"
+                style={{ background: "var(--color-primary)" }}
+              >
+                {savingSupplier ? "Saving..." : "Save Supplier"}
               </button>
             </div>
           </form>
@@ -793,8 +827,9 @@ export default function Suppliers() {
                 <p className="text-sm font-semibold" style={{ color: "var(--color-text)" }}>Order Items</p>
                 <button
                   type="button"
+                  disabled={creatingPO}
                   onClick={() => setPoForm({ ...poForm, items: [...poForm.items, { product_id: "", quantity_ordered: 1, unit_cost: 0 }] })}
-                  className="text-xs font-semibold text-primary px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20"
+                  className="text-xs font-semibold text-primary px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   + Add Item
                 </button>
@@ -825,7 +860,7 @@ export default function Suppliers() {
                     <button
                       type="button"
                       onClick={() => setPoForm((prev) => ({ ...prev, items: prev.items.filter((_, itemIndex) => itemIndex !== index) || prev.items }))}
-                      disabled={poForm.items.length === 1}
+                      disabled={poForm.items.length === 1 || creatingPO}
                       className="h-[42px] rounded-xl text-sm font-bold text-red-600 bg-red-50 border border-red-200 disabled:opacity-40"
                     >
                       ×
@@ -848,14 +883,21 @@ export default function Suppliers() {
             <div className="flex gap-3 pt-3">
               <button
                 type="button"
+                disabled={creatingPO}
                 onClick={() => setShowPOModal(false)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-medium"
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ backgroundColor: "var(--color-bg)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}
               >
                 Cancel
               </button>
-              <button type="submit" className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: "var(--color-primary)" }}>
-                Save Order
+              <button
+                type="submit"
+                disabled={creatingPO}
+                aria-busy={creatingPO}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-70 disabled:cursor-not-allowed"
+                style={{ background: "var(--color-primary)" }}
+              >
+                {creatingPO ? "Saving..." : "Save Order"}
               </button>
             </div>
           </form>
@@ -959,14 +1001,21 @@ export default function Suppliers() {
             <div className="flex gap-3 pt-3">
               <button
                 type="button"
+                disabled={receivingItems}
                 onClick={() => setReceivingPO(null)}
-                className="flex-1 py-2.5 rounded-xl text-sm font-medium"
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ backgroundColor: "var(--color-bg)", border: "1px solid var(--color-border)", color: "var(--color-text)" }}
               >
                 Cancel
               </button>
-              <button type="submit" className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: "var(--color-primary)" }}>
-                Confirm Receipt
+              <button
+                type="submit"
+                disabled={receivingItems}
+                aria-busy={receivingItems}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white disabled:opacity-70 disabled:cursor-not-allowed"
+                style={{ background: "var(--color-primary)" }}
+              >
+                {receivingItems ? "Saving..." : "Confirm Receipt"}
               </button>
             </div>
           </form>

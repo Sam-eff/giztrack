@@ -24,8 +24,32 @@ createRoot(document.getElementById("root")!).render(
   </StrictMode>
 );
 
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
+const isLocalHostname =
+  LOCAL_HOSTNAMES.has(window.location.hostname) ||
+  window.location.hostname.endsWith(".localhost");
+
+const clearLocalOfflineCache = async () => {
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  await Promise.all(registrations.map((registration) => registration.unregister()));
+
+  if ("caches" in window) {
+    const cacheKeys = await caches.keys();
+    await Promise.all(
+      cacheKeys
+        .filter((key) => key.startsWith("Giztrack-"))
+        .map((key) => caches.delete(key))
+    );
+  }
+};
+
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
+    if (isLocalHostname) {
+      void clearLocalOfflineCache().catch(() => undefined);
+      return;
+    }
+
     navigator.serviceWorker
       .register("/sw.js")
       .then((registration) => {
