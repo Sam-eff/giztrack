@@ -147,21 +147,32 @@ def activate_subscription_from_transaction(data):
         and subscription.paystack_subscription_code
         and subscription_code == subscription.paystack_subscription_code
     )
-    if checkout_token and not is_known_recurring_charge:
-        if subscription.pending_checkout_token != checkout_token:
+    is_pending_checkout_charge = False
+    if subscription.has_pending_checkout and not is_known_recurring_charge:
+        if checkout_token:
+            if subscription.pending_checkout_token != checkout_token:
+                return "ignored"
+            if (
+                subscription.pending_checkout_reference
+                and reference
+                and subscription.pending_checkout_reference != reference
+            ):
+                return "ignored"
+            is_pending_checkout_charge = True
+        elif reference and subscription.pending_checkout_reference == reference:
+            is_pending_checkout_charge = True
+        elif metadata.get("checkout_kind") == "subscription_checkout":
             return "ignored"
-        if (
-            subscription.pending_checkout_reference
-            and reference
-            and subscription.pending_checkout_reference != reference
-        ):
-            return "ignored"
-        if subscription.pending_plan_id and plan and subscription.pending_plan_id != plan.id:
-            return "ignored"
-        if not plan and subscription.pending_plan_id:
-            plan = subscription.pending_plan
-        if not plan:
-            return "ignored"
+
+        if is_pending_checkout_charge:
+            if subscription.pending_plan_id and plan and subscription.pending_plan_id != plan.id:
+                return "ignored"
+            if not plan and subscription.pending_plan_id:
+                plan = subscription.pending_plan
+            if not plan:
+                return "ignored"
+    elif checkout_token and not is_known_recurring_charge:
+        return "ignored"
 
     if plan and subscription.plan_id != plan.id:
         subscription.plan = plan
@@ -199,7 +210,7 @@ def activate_subscription_from_transaction(data):
     subscription.status = Subscription.Status.ACTIVE
     subscription.current_period_start = period_start
     subscription.current_period_end = period_end
-    if checkout_token and not is_known_recurring_charge:
+    if is_pending_checkout_charge:
         subscription.pending_plan = None
         subscription.pending_checkout_reference = ""
         subscription.pending_checkout_token = ""

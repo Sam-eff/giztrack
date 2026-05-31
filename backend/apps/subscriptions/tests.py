@@ -111,6 +111,103 @@ class SubscriptionCallbackTests(APITestCase):
         self.assertEqual(self.subscription.pending_checkout_reference, "ref_pro_pending")
         self.assertTrue(self.subscription.pending_checkout_token)
 
+    @patch("apps.subscriptions.views.paystack.verify_transaction")
+    @patch("apps.subscriptions.views.paystack.initialize_transaction")
+    def test_callback_clears_pending_checkout_when_verified_by_reference(
+        self,
+        mock_initialize,
+        mock_verify,
+    ):
+        pro_plan = Plan.objects.create(
+            name="Pro",
+            description="Advanced operations",
+            price="7000.00",
+            paystack_plan_code="PLN_test_pro_success",
+            interval="monthly",
+        )
+        mock_initialize.return_value = {
+            "authorization_url": "https://paystack.test/authorize/pro",
+            "access_code": "access_pro",
+            "reference": "ref_pro_success",
+        }
+
+        self.client.force_authenticate(user=self.user)
+        start_response = self.client.post(
+            "/api/v1/subscriptions/initialize/",
+            {"plan_id": pro_plan.id},
+            format="json",
+        )
+        self.assertEqual(start_response.status_code, status.HTTP_200_OK)
+        self.subscription.refresh_from_db()
+        self.assertTrue(self.subscription.has_pending_checkout)
+
+        paid_at = timezone.now()
+        mock_verify.return_value = {
+            "status": "success",
+            "reference": "ref_pro_success",
+            "amount": 700000,
+            "paid_at": paid_at.isoformat(),
+            "customer": {
+                "customer_code": "CUS_test_customer",
+                "email": self.shop.email,
+            },
+            "metadata": {
+                "shop_id": str(self.shop.id),
+                "plan_id": str(pro_plan.id),
+                "user_id": str(self.user.id),
+                "checkout_kind": "subscription_checkout",
+            },
+            "plan_object": {
+                "plan_code": pro_plan.paystack_plan_code,
+                "interval": pro_plan.interval,
+            },
+        }
+
+        callback_response = self.client.get("/api/v1/subscriptions/callback/?reference=ref_pro_success")
+
+        self.assertEqual(callback_response.status_code, 302)
+        self.assertIn("status=success", callback_response["Location"])
+
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.plan_id, pro_plan.id)
+        self.assertEqual(self.subscription.status, Subscription.Status.ACTIVE)
+        self.assertFalse(self.subscription.has_pending_checkout)
+        self.assertIsNone(self.subscription.pending_plan)
+        self.assertEqual(self.subscription.pending_checkout_reference, "")
+        self.assertEqual(self.subscription.pending_checkout_token, "")
+        self.assertIsNone(self.subscription.pending_checkout_started_at)
+        self.assertTrue(
+            PaymentHistory.objects.filter(
+                shop=self.shop,
+                paystack_reference="ref_pro_success",
+            ).exists()
+        )
+
+    def test_current_subscription_clears_stale_pending_checkout_after_activation(self):
+        now = timezone.now()
+        self.subscription.status = Subscription.Status.ACTIVE
+        self.subscription.current_period_start = now
+        self.subscription.current_period_end = now + timedelta(days=30)
+        self.subscription.pending_plan = self.plan
+        self.subscription.pending_checkout_reference = "ref_already_paid"
+        self.subscription.pending_checkout_token = "stale-token"
+        self.subscription.pending_checkout_started_at = now
+        self.subscription.save()
+        self.shop.subscription_expires_at = self.subscription.current_period_end
+        self.shop.save(update_fields=["subscription_expires_at"])
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get("/api/v1/subscriptions/current/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data["has_pending_checkout"])
+        self.subscription.refresh_from_db()
+        self.assertFalse(self.subscription.has_pending_checkout)
+        self.assertIsNone(self.subscription.pending_plan)
+        self.assertEqual(self.subscription.pending_checkout_reference, "")
+        self.assertEqual(self.subscription.pending_checkout_token, "")
+        self.assertIsNone(self.subscription.pending_checkout_started_at)
+
     @patch("apps.subscriptions.views.paystack.initialize_transaction")
     def test_active_subscription_blocks_new_plan_checkout(self, mock_initialize):
         pro_plan = Plan.objects.create(

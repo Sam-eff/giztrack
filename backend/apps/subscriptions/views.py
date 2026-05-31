@@ -36,6 +36,29 @@ class CurrentSubscriptionView(APIView):
     def get(self, request):
         try:
             sub = request.user.shop.subscription
+            if (
+                sub.status == Subscription.Status.ACTIVE
+                and sub.has_pending_checkout
+                and (
+                    sub.pending_plan_id == sub.plan_id
+                    or PaymentHistory.objects.filter(
+                        shop=request.user.shop,
+                        paystack_reference=sub.pending_checkout_reference,
+                    ).exists()
+                )
+            ):
+                sub.pending_plan = None
+                sub.pending_checkout_reference = ""
+                sub.pending_checkout_token = ""
+                sub.pending_checkout_started_at = None
+                sub.save(
+                    update_fields=[
+                        "pending_plan",
+                        "pending_checkout_reference",
+                        "pending_checkout_token",
+                        "pending_checkout_started_at",
+                    ]
+                )
             return Response(SubscriptionSerializer(sub).data)
         except Subscription.DoesNotExist:
             return Response({"status": "no_subscription", "message": "No active subscription."})
