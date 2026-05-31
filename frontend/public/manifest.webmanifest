@@ -2,6 +2,7 @@
   "name": "Giztrack",
   "short_name": "Giztrack",
   "description": "Inventory, sales, repairs and customer management for Nigerian tech shops.",
+  "id": "/dashboard",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
@@ -21,12 +22,6 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
-    },
-    {
-      "src": "/favicon.png",
-      "sizes": "1024x1024",
-      "type": "image/png",
-      "purpose": "any maskable"
     }
   ]
 }

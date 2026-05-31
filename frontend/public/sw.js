@@ -1,4 +1,4 @@
-const VERSION = "Giztrack-v4";
+const VERSION = "Giztrack-v5";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const API_CACHE = `${VERSION}-api`;
@@ -29,6 +29,11 @@ const isApiRequest = (url) => url.pathname.startsWith("/api/");
 
 const isCacheableApiRequest = (url) =>
   isApiRequest(url) && !url.pathname.includes("/auth/");
+
+const isAppShellResponse = (response) => {
+  const contentType = response.headers.get("Content-Type") || "";
+  return response.ok && contentType.includes("text/html");
+};
 
 const offlineApiResponse = () =>
   new Response(
@@ -118,7 +123,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.ok) {
+          if (isAppShellResponse(response)) {
             const copy = response.clone();
             void caches.open(SHELL_CACHE).then((cache) => cache.put("/index.html", copy));
           }
