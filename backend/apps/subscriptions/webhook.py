@@ -84,6 +84,45 @@ def _calculate_period_end(period_start, interval):
     return _add_months(period_start, 1)
 
 
+def _customer_matches(subscription, customer_code):
+    if not customer_code or not subscription.paystack_customer_code:
+        return True
+    return customer_code == subscription.paystack_customer_code
+
+
+def _has_established_paid_subscription(subscription):
+    return bool(
+        subscription.paystack_subscription_code
+        or subscription.paystack_email_token
+        or subscription.current_period_end
+        or subscription.shop.subscription_expires_at
+    )
+
+
+def _is_existing_subscription_charge(subscription, customer_code):
+    return (
+        subscription.status in {
+            Subscription.Status.ACTIVE,
+            Subscription.Status.CANCELLED,
+            Subscription.Status.EXPIRED,
+        }
+        and _has_established_paid_subscription(subscription)
+        and _customer_matches(subscription, customer_code)
+    )
+
+
+def _paid_through(subscription):
+    dates = [
+        value
+        for value in (
+            subscription.current_period_end,
+            subscription.shop.subscription_expires_at,
+        )
+        if value
+    ]
+    return max(dates) if dates else None
+
+
 def _resolve_plan(data):
     metadata = data.get("metadata") or {}
     plan_id = metadata.get("plan_id")
@@ -152,7 +191,8 @@ def _resolve_subscription(data, plan=None):
 
 def activate_subscription_from_transaction(data):
     metadata = data.get("metadata") or {}
-    reference = data.get("reference") or data.get("transaction", {}).get("reference", "")
+    subscription_payload = data.get("subscription") or {}
+    reference = data.get("reference") or (data.get("transaction") or {}).get("reference", "")
     amount_kobo = data.get("amount", 0) or 0
     paid_at = _parse_datetime(data.get("paid_at")) or timezone.now()
     plan = _resolve_plan(data)
@@ -162,15 +202,16 @@ def activate_subscription_from_transaction(data):
 
     subscription_code = (
         data.get("subscription_code")
-        or data.get("subscription", {}).get("subscription_code")
+        or subscription_payload.get("subscription_code")
         or subscription.paystack_subscription_code
     )
     email_token = (
         data.get("email_token")
-        or data.get("subscription", {}).get("email_token")
+        or subscription_payload.get("email_token")
         or subscription.paystack_email_token
     )
     checkout_token = metadata.get("checkout_token", "")
+    customer_code = (data.get("customer") or {}).get("customer_code", "")
     is_recurring_charge_payload = bool(
         data.get("subscription_code")
         or (data.get("subscription") or {}).get("subscription_code")
@@ -179,13 +220,28 @@ def activate_subscription_from_transaction(data):
         subscription_code
         and (
             (subscription.paystack_subscription_code and subscription_code == subscription.paystack_subscription_code)
-            or is_recurring_charge_payload
+            or (
+                is_recurring_charge_payload
+                and (
+                    not subscription.paystack_subscription_code
+                    or _customer_matches(subscription, customer_code)
+                )
+            )
         )
     )
+    is_existing_subscription_charge = _is_existing_subscription_charge(subscription, customer_code)
 
     is_pending_checkout_charge = False
     if subscription.has_pending_checkout and not is_known_recurring_charge:
-        if checkout_token:
+        if (
+            is_existing_subscription_charge
+            and checkout_token
+            and checkout_token != subscription.pending_checkout_token
+        ):
+            # A pending upgrade checkout must not block the current plan's
+            # recurring charge when Paystack reuses old checkout metadata.
+            pass
+        elif checkout_token:
             if subscription.pending_checkout_token != checkout_token:
                 return "ignored"
             if (
@@ -209,16 +265,15 @@ def activate_subscription_from_transaction(data):
                 return "ignored"
     elif checkout_token and not is_known_recurring_charge:
         # Paystack carries over the original checkout metadata on auto-renewal
-        # charge.success events. Only reject if the subscription is NOT already
-        # active — an active subscription receiving a charge with inherited
-        # checkout_token is a legitimate renewal.
-        if subscription.status != Subscription.Status.ACTIVE:
+        # charge.success events. Accept this only for shops that already had a
+        # paid subscription relationship; otherwise stale checkout links remain
+        # ignored after users cancel a pending checkout.
+        if not is_existing_subscription_charge:
             return "ignored"
 
     if plan and subscription.plan_id != plan.id:
         subscription.plan = plan
 
-    customer_code = (data.get("customer") or {}).get("customer_code", "")
     if customer_code and subscription.paystack_customer_code != customer_code:
         subscription.paystack_customer_code = customer_code
 
@@ -242,7 +297,7 @@ def activate_subscription_from_transaction(data):
     )
     period_end = (
         _parse_datetime(data.get("next_payment_date"))
-        or _parse_datetime(data.get("subscription", {}).get("next_payment_date"))
+        or _parse_datetime(subscription_payload.get("next_payment_date"))
         or _calculate_period_end(period_start, (subscription.plan.interval if subscription.plan else "monthly"))
     )
 
@@ -330,7 +385,11 @@ def on_invoice_payment_success(data):
     - customer is at data.customer
     - transaction details may be nested under data.transaction
     """
-    subscription_code = data.get("subscription_code", "")
+    subscription_code = (
+        data.get("subscription_code")
+        or (data.get("subscription") or {}).get("subscription_code")
+        or ""
+    )
     customer = data.get("customer") or {}
     customer_code = customer.get("customer_code", "")
 
@@ -428,6 +487,14 @@ def on_payment_failed(data):
         subscription = Subscription.objects.get(
             paystack_subscription_code=subscription_code
         )
+        paid_through = _paid_through(subscription)
+        if paid_through and paid_through > timezone.now():
+            logger.info(
+                "invoice.payment_failed: keeping subscription %s active until %s",
+                subscription_code,
+                paid_through,
+            )
+            return
         subscription.status = Subscription.Status.EXPIRED
         subscription.save()
         logger.info(

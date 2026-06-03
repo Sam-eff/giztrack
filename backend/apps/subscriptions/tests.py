@@ -1,6 +1,8 @@
 from datetime import timedelta
+from io import StringIO
 from unittest.mock import patch
 
+from django.core.management import call_command
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -591,6 +593,139 @@ class SubscriptionWebhookTests(APITestCase):
         self.assertEqual(self.subscription.paystack_subscription_code, "SUB_test_code_recovered")
         self.assertEqual(self.shop.subscription_expires_at, self.subscription.current_period_end)
 
+    @patch("apps.subscriptions.webhook.verify_signature")
+    def test_charge_success_reactivates_expired_subscription_without_subscription_code(self, mock_verify):
+        mock_verify.return_value = True
+        old_period_end = timezone.now() - timedelta(days=1)
+        self.subscription.status = Subscription.Status.EXPIRED
+        self.subscription.current_period_end = old_period_end
+        self.subscription.save(update_fields=["status", "current_period_end"])
+        self.shop.subscription_expires_at = old_period_end
+        self.shop.save(update_fields=["subscription_expires_at"])
 
+        payload = {
+            "event": "charge.success",
+            "data": {
+                "reference": "ref_renewal_no_subscription_code",
+                "amount": 300000,
+                "paid_at": timezone.now().isoformat(),
+                "metadata": {
+                    "shop_id": str(self.shop.id),
+                    "plan_id": str(self.plan.id),
+                    "checkout_token": "old-checkout-token",
+                    "checkout_kind": "subscription_checkout",
+                },
+                "customer": {
+                    "customer_code": "CUS_test_customer",
+                },
+            },
+        }
+
+        response = self.client.post(
+            "/api/v1/subscriptions/webhook/",
+            payload,
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.subscription.refresh_from_db()
+        self.shop.refresh_from_db()
+        self.assertEqual(self.subscription.status, Subscription.Status.ACTIVE)
+        self.assertGreater(self.subscription.current_period_end, timezone.now())
+        self.assertEqual(self.shop.subscription_expires_at, self.subscription.current_period_end)
+        self.assertTrue(
+            PaymentHistory.objects.filter(
+                shop=self.shop,
+                paystack_reference="ref_renewal_no_subscription_code",
+            ).exists()
+        )
+
+    @patch("apps.subscriptions.webhook.verify_signature")
+    def test_invoice_payment_failed_keeps_paid_through_subscription_active(self, mock_verify):
+        mock_verify.return_value = True
+        future_period_end = timezone.now() + timedelta(days=10)
+        self.subscription.status = Subscription.Status.ACTIVE
+        self.subscription.current_period_end = future_period_end
+        self.subscription.save(update_fields=["status", "current_period_end"])
+        self.shop.subscription_expires_at = future_period_end
+        self.shop.save(update_fields=["subscription_expires_at"])
+
+        payload = {
+            "event": "invoice.payment_failed",
+            "data": {
+                "subscription_code": "SUB_test_code",
+                "customer": {
+                    "customer_code": "CUS_test_customer",
+                },
+            },
+        }
+
+        response = self.client.post(
+            "/api/v1/subscriptions/webhook/",
+            payload,
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.status, Subscription.Status.ACTIVE)
+        self.assertEqual(self.subscription.current_period_end, future_period_end)
+
+
+class PaystackReconciliationCommandTests(APITestCase):
+    def setUp(self):
+        self.shop = Shop.objects.create(
+            name="Recovery Shop",
+            owner_name="Owner",
+            email="recovery@example.com",
+            phone="08012345678",
+        )
+        self.plan = Plan.objects.create(
+            name="Basic",
+            description="Core operations",
+            price="3000.00",
+            paystack_plan_code="PLN_recovery_basic",
+            interval="monthly",
+        )
+        old_period_end = timezone.now() - timedelta(days=2)
+        self.subscription = Subscription.objects.create(
+            shop=self.shop,
+            plan=self.plan,
+            status=Subscription.Status.EXPIRED,
+            paystack_customer_code="CUS_recovery_customer",
+            current_period_start=old_period_end - timedelta(days=30),
+            current_period_end=old_period_end,
+        )
+        self.shop.subscription_expires_at = old_period_end
+        self.shop.save(update_fields=["subscription_expires_at"])
+
+    @patch("apps.subscriptions.management.commands.reconcile_paystack_subscriptions.paystack.find_subscription")
+    def test_reconcile_paystack_subscriptions_unlocks_active_remote_subscription(self, mock_find_subscription):
+        next_payment_date = timezone.now() + timedelta(days=28)
+        mock_find_subscription.return_value = {
+            "subscription_code": "SUB_recovered",
+            "email_token": "EMAIL_recovered",
+            "status": "active",
+            "raw": {
+                "createdAt": timezone.now().isoformat(),
+                "next_payment_date": next_payment_date.isoformat(),
+            },
+        }
+        stdout = StringIO()
+
+        call_command(
+            "reconcile_paystack_subscriptions",
+            shop_id=self.shop.id,
+            stdout=stdout,
+        )
+
+        self.subscription.refresh_from_db()
+        self.shop.refresh_from_db()
+        self.assertEqual(self.subscription.status, Subscription.Status.ACTIVE)
+        self.assertEqual(self.subscription.paystack_subscription_code, "SUB_recovered")
+        self.assertEqual(self.subscription.paystack_email_token, "EMAIL_recovered")
+        self.assertEqual(self.subscription.current_period_end, next_payment_date)
+        self.assertEqual(self.shop.subscription_expires_at, next_payment_date)
+        self.assertIn("reconciled 1", stdout.getvalue())
 
 
