@@ -364,3 +364,233 @@ class SubscriptionCallbackTests(APITestCase):
         self.subscription.refresh_from_db()
         self.assertEqual(self.subscription.status, Subscription.Status.CANCELLED)
         self.assertIn("message", response.data)
+
+
+class SubscriptionWebhookTests(APITestCase):
+    def setUp(self):
+        self.shop = Shop.objects.create(
+            name="Webhook Shop",
+            owner_name="Owner",
+            email="webhook@example.com",
+            phone="08012345678",
+        )
+        self.plan = Plan.objects.create(
+            name="Basic",
+            description="Core operations",
+            price="3000.00",
+            paystack_plan_code="PLN_test_basic",
+            interval="monthly",
+        )
+        # Create an already active subscription with a Paystack subscription code
+        self.subscription = Subscription.objects.create(
+            shop=self.shop,
+            plan=self.plan,
+            status=Subscription.Status.ACTIVE,
+            paystack_customer_code="CUS_test_customer",
+            paystack_subscription_code="SUB_test_code",
+            paystack_email_token="EMAIL_token_123",
+            current_period_start=timezone.now() - timedelta(days=29),
+            current_period_end=timezone.now() + timedelta(days=1),
+        )
+        self.shop.subscription_expires_at = self.subscription.current_period_end
+        self.shop.save()
+
+    @patch("apps.subscriptions.webhook.verify_signature")
+    def test_charge_success_auto_renewal_with_inherited_metadata(self, mock_verify):
+        mock_verify.return_value = True
+
+        # charge.success auto-renewal event payload:
+        # has checkout_token in metadata, but also matches subscription_code
+        payload = {
+            "event": "charge.success",
+            "data": {
+                "reference": "ref_renewal_charge_123",
+                "amount": 300000,
+                "paid_at": timezone.now().isoformat(),
+                "metadata": {
+                    "shop_id": str(self.shop.id),
+                    "plan_id": str(self.plan.id),
+                    "checkout_token": "old-checkout-token",
+                    "checkout_kind": "subscription_checkout",
+                },
+                "subscription": {
+                    "subscription_code": "SUB_test_code",
+                    "next_payment_date": (timezone.now() + timedelta(days=30)).isoformat(),
+                },
+                "customer": {
+                    "customer_code": "CUS_test_customer",
+                }
+            }
+        }
+
+        response = self.client.post(
+            "/api/v1/subscriptions/webhook/",
+            payload,
+            format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.subscription.refresh_from_db()
+        self.shop.refresh_from_db()
+
+        # The subscription should remain active, and its period should be extended
+        self.assertEqual(self.subscription.status, Subscription.Status.ACTIVE)
+        self.assertEqual(self.shop.subscription_expires_at, self.subscription.current_period_end)
+        self.assertTrue(
+            PaymentHistory.objects.filter(
+                shop=self.shop,
+                paystack_reference="ref_renewal_charge_123"
+            ).exists()
+        )
+
+    @patch("apps.subscriptions.webhook.verify_signature")
+    def test_invoice_payment_success_renewal(self, mock_verify):
+        mock_verify.return_value = True
+
+        # invoice.payment_success has subscription_code at top-level
+        payload = {
+            "event": "invoice.payment_success",
+            "data": {
+                "subscription_code": "SUB_test_code",
+                "amount": 300000,
+                "paid_at": timezone.now().isoformat(),
+                "next_payment_date": (timezone.now() + timedelta(days=30)).isoformat(),
+                "customer": {
+                    "customer_code": "CUS_test_customer",
+                },
+                "transaction": {
+                    "reference": "ref_invoice_payment_123"
+                }
+            }
+        }
+
+        response = self.client.post(
+            "/api/v1/subscriptions/webhook/",
+            payload,
+            format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.subscription.refresh_from_db()
+        self.shop.refresh_from_db()
+
+        self.assertEqual(self.subscription.status, Subscription.Status.ACTIVE)
+        self.assertEqual(self.shop.subscription_expires_at, self.subscription.current_period_end)
+        self.assertTrue(
+            PaymentHistory.objects.filter(
+                shop=self.shop,
+                paystack_reference="ref_invoice_payment_123"
+            ).exists()
+        )
+
+    @patch("apps.subscriptions.webhook.verify_signature")
+    def test_invoice_update_status_paid(self, mock_verify):
+        mock_verify.return_value = True
+
+        payload = {
+            "event": "invoice.update",
+            "data": {
+                "status": "paid",
+                "subscription_code": "SUB_test_code",
+                "amount": 300000,
+                "paid_at": timezone.now().isoformat(),
+                "next_payment_date": (timezone.now() + timedelta(days=30)).isoformat(),
+                "customer": {
+                    "customer_code": "CUS_test_customer",
+                },
+                "transaction": {
+                    "reference": "ref_invoice_update_123"
+                }
+            }
+        }
+
+        response = self.client.post(
+            "/api/v1/subscriptions/webhook/",
+            payload,
+            format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.subscription.refresh_from_db()
+        self.shop.refresh_from_db()
+
+        self.assertEqual(self.subscription.status, Subscription.Status.ACTIVE)
+        self.assertEqual(self.shop.subscription_expires_at, self.subscription.current_period_end)
+        self.assertTrue(
+            PaymentHistory.objects.filter(
+                shop=self.shop,
+                paystack_reference="ref_invoice_update_123"
+            ).exists()
+        )
+
+    def test_webhook_signature_verification(self):
+        # Do not patch verify_signature. Send a request with a valid computed signature.
+        import json
+        import hmac
+        import hashlib
+        from django.conf import settings
+        
+        payload = {"event": "charge.success", "data": {}}
+        body = json.dumps(payload).encode("utf-8")
+        
+        key = settings.PAYSTACK_SECRET_KEY.encode("utf-8")
+        signature = hmac.new(key, body, hashlib.sha512).hexdigest()
+        
+        response = self.client.post(
+            "/api/v1/subscriptions/webhook/",
+            data=body,
+            content_type="application/json",
+            HTTP_X_PAYSTACK_SIGNATURE=signature
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    @patch("apps.subscriptions.webhook.verify_signature")
+    def test_charge_success_auto_renewal_expired_subscription_no_code_in_db(self, mock_verify):
+        mock_verify.return_value = True
+
+        # Set local subscription to EXPIRED and clear paystack_subscription_code
+        self.subscription.status = Subscription.Status.EXPIRED
+        self.subscription.paystack_subscription_code = ""
+        self.subscription.save()
+
+        # The incoming recurring charge webhook payload
+        payload = {
+            "event": "charge.success",
+            "data": {
+                "reference": "ref_renewal_charge_no_code",
+                "amount": 300000,
+                "paid_at": timezone.now().isoformat(),
+                "metadata": {
+                    "shop_id": str(self.shop.id),
+                    "plan_id": str(self.plan.id),
+                    "checkout_token": "old-checkout-token",
+                    "checkout_kind": "subscription_checkout",
+                },
+                "subscription": {
+                    "subscription_code": "SUB_test_code_recovered",
+                    "next_payment_date": (timezone.now() + timedelta(days=30)).isoformat(),
+                },
+                "customer": {
+                    "customer_code": "CUS_test_customer",
+                }
+            }
+        }
+
+        response = self.client.post(
+            "/api/v1/subscriptions/webhook/",
+            payload,
+            format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        self.subscription.refresh_from_db()
+        self.shop.refresh_from_db()
+
+        # It should activate the subscription and save the subscription_code to DB
+        self.assertEqual(self.subscription.status, Subscription.Status.ACTIVE)
+        self.assertEqual(self.subscription.paystack_subscription_code, "SUB_test_code_recovered")
+        self.assertEqual(self.shop.subscription_expires_at, self.subscription.current_period_end)
+
+
+
+

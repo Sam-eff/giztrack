@@ -50,7 +50,7 @@ if default_env_file.exists():
     environ.Env.read_env(default_env_file)
 
 local_env_file = BASE_DIR / ".env.local"
-if local_env_file.exists():
+if local_env_file.exists() and not os.path.exists('/.dockerenv'):
     environ.Env.read_env(local_env_file, overwrite=True)
 
 

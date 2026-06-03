@@ -1,4 +1,5 @@
 import json
+import logging
 import secrets
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
@@ -18,6 +19,8 @@ from .serializers import (
     PaymentHistorySerializer,
 )
 from . import paystack, webhook
+
+logger = logging.getLogger(__name__)
 
 
 class PlanListView(APIView):
@@ -319,10 +322,10 @@ class PaystackWebhookView(APIView):
             event_type = payload.get("event")
             data = payload.get("data", {})
             webhook.handle_event(event_type, data)
-        except Exception:
+        except Exception as e:
             # Always return 200 to Paystack even on internal errors
-            # so it doesn't keep retrying
-            pass
+            # so it doesn't keep retrying, but log the error.
+            logger.exception("Error processing Paystack webhook event %s: %s", event_type if 'event_type' in locals() else 'unknown', e)
 
         return Response({"status": "ok"})
 
