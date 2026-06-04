@@ -6,6 +6,16 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://giztrack.com/register</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://giztrack.com/login</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
     <loc>https://giztrack.com/terms</loc>
     <changefreq>yearly</changefreq>
     <priority>0.4</priority>
