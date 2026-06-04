@@ -1,8 +1,8 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.mail import send_mail
 from django.core.management.base import BaseCommand, CommandError
 from django.core.validators import validate_email
+from utils.email_utils import send_giztrack_email
 
 
 class Command(BaseCommand):
@@ -45,7 +45,6 @@ class Command(BaseCommand):
         )
 
         try:
-            from utils.email_utils import send_giztrack_email
             send_giztrack_email(
                 subject=subject,
                 message=message,

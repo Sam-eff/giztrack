@@ -107,7 +107,7 @@ export default function Landing() {
   return (
     <>
       <Helmet>
-        <title>Giztrack — Manage your shop like a pro</title>
+        <title>Giztrack — Every device, sale, and repair under control</title>
         <meta name="description" content="Inventory, sales, repairs and customer management for Nigerian tech shops. Start free." />
       </Helmet>
 
@@ -219,8 +219,8 @@ export default function Landing() {
               fontSize: "clamp(1.75rem, 6vw, 3.5rem)",
               lineHeight: 1.15, marginBottom: 16,
             }}>
-              Manage your shop<br />
-              <span style={{ color: "var(--color-accent)" }}>like a pro.</span>
+              Every device. Every sale.<br />
+              <span style={{ color: "var(--color-accent)" }}>Every repair. Under control.</span>
             </h1>
 
             <p style={{

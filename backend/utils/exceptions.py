@@ -19,9 +19,9 @@ def custom_exception_handler(exc, context):
         if isinstance(response.data, dict):
             non_field = response.data.get("non_field_errors") or response.data.get("detail")
             if non_field:
-                error_data["message"] = (
-                    non_field[0] if isinstance(non_field, list) else str(non_field)
-                )
+                message = non_field[0] if isinstance(non_field, list) else str(non_field)
+                error_data["message"] = message
+                error_data["detail"] = message
         response.data = error_data
 
     return response

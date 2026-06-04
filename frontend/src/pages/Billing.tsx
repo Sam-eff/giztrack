@@ -237,6 +237,7 @@ export default function Billing() {
         setToast({ message: "Payment failed or was cancelled. Please try again.", type: "error" });
         setSearchParams({});
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Auto-dismiss toast

@@ -606,6 +606,7 @@ export default function Sales() {
 
   useEffect(() => {
     if (tab === "history") fetchSales();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, dateFrom, dateTo, page]);
 
   // Reset to page 1 when filters change
@@ -836,6 +837,7 @@ export default function Sales() {
     }
 
     setPendingScannedBarcode(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingScannedBarcode, productsLoading, products, search, warning]);
 
   const updateQty = (index: number, quantity: number) => {

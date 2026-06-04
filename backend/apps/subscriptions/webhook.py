@@ -22,9 +22,14 @@ def verify_signature(request):
     Validates that the webhook truly came from Paystack.
     Paystack signs every webhook with your secret key.
     """
+    secret_key = (settings.PAYSTACK_SECRET_KEY or "").strip()
+    if not secret_key:
+        logger.error("Paystack webhook rejected because PAYSTACK_SECRET_KEY is not configured.")
+        return False
+
     paystack_signature = request.headers.get("x-paystack-signature", "")
     computed = hmac.new(
-        settings.PAYSTACK_SECRET_KEY.encode("utf-8"),
+        secret_key.encode("utf-8"),
         request.body,
         hashlib.sha512,
     ).hexdigest()

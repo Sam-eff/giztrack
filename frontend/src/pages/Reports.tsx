@@ -113,6 +113,36 @@ interface InventoryTrackingReport {
   products: InventoryTrackingProduct[];
 }
 
+interface StockLog {
+  id: number;
+  product_name: string;
+  quantity_after: number;
+  change_amount: number;
+  reason: string;
+  reason_display?: string;
+  created_by_name?: string | null;
+  note?: string;
+  created_at: string;
+}
+
+interface SalesSummary {
+  total_revenue?: number;
+  total_net_profit?: number;
+  total_sales?: number;
+}
+
+interface ChartTooltipEntry {
+  color?: string;
+  name?: string;
+  value: number | string;
+}
+
+interface ChartTooltipProps {
+  active?: boolean;
+  payload?: ChartTooltipEntry[];
+  label?: string | number;
+}
+
 const emptyInventoryTracking: InventoryTrackingReport = {
   summary: {
     total_stock: 0,
@@ -178,12 +208,13 @@ const COLORS = ["var(--color-primary)", "#16a34a", "#f59e0b", "#d946ef", "#8b5cf
 
 // ── Sub-component: Stock Movements ─────────────────────────────────────────────
 function StockMovementsTab() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<StockLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [count, setCount] = useState(0);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     api.get(`/inventory/stock-logs/?page=${page}`)
       .then((res) => {
@@ -330,7 +361,7 @@ export default function Reports() {
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0]);
 
   const [salesReport, setSalesReport] = useState<SalesReportItem[]>([]);
-  const [salesSummary, setSalesSummary] = useState<any>(null);
+  const [salesSummary, setSalesSummary] = useState<SalesSummary | null>(null);
   const [bestSellers, setBestSellers] = useState<BestSeller[]>([]);
   const [techStats, setTechStats] = useState<TechnicianStat[]>([]);
   const [lowStock, setLowStock] = useState<LowStockItem[]>([]);
@@ -453,6 +484,7 @@ export default function Reports() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchAll(); }, [period, dateFrom, dateTo, isPro]);
 
   const handleExport = async (fmt: "csv" | "pdf") => {
@@ -473,7 +505,8 @@ export default function Reports() {
       a.download = `analytics_report_${new Date().toISOString().split("T")[0]}.${fmt}`;
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
+    } catch (err: unknown) {
+      void err;
     } finally {
       setExporting(false);
     }
@@ -501,26 +534,28 @@ export default function Reports() {
 
   const reportData = salesReport;
   
-  const formatYAxis = (tickItem: any) => {
-    if (tickItem >= 1000000) return `₦${(tickItem / 1000000).toFixed(1)}M`;
-    if (tickItem >= 1000) return `₦${(tickItem / 1000).toFixed(1)}k`;
+  const formatYAxis = (tickItem: number | string) => {
+    const numericTick = Number(tickItem);
+    if (numericTick >= 1000000) return `₦${(numericTick / 1000000).toFixed(1)}M`;
+    if (numericTick >= 1000) return `₦${(numericTick / 1000).toFixed(1)}k`;
     return `₦${tickItem}`;
   };
 
-  const CustomChartTooltip = ({ active, payload, label }: any) => {
+  const CustomChartTooltip = ({ active, payload, label }: ChartTooltipProps) => {
     if (active && payload && payload.length) {
-      const d = new Date(label);
+      const labelText = String(label ?? "");
+      const d = new Date(labelText);
       const isDate = !isNaN(d.getTime());
       
       return (
         <div className="bg-surface border-app border p-5 rounded-2xl shadow-xl flex flex-col gap-3 min-w-[180px]">
           <p className="text-xs font-bold text-muted uppercase tracking-wider">
-            {isDate && typeof label === 'string' && label.includes('-') 
+            {isDate && labelText.includes('-') 
               ? period === 'monthly' ? d.toLocaleDateString('default', { month: 'long', year: 'numeric' }) : d.toLocaleDateString('default', { weekday: 'short', month: 'short', day: 'numeric' })
-              : label}
+              : labelText}
           </p>
           <div className="space-y-2">
-            {payload.map((entry: any, index: number) => (
+            {payload.map((entry, index) => (
               <div key={index} className="flex flex-col">
                 <span className="text-sm font-medium opacity-80" style={{ color: entry.color }}>{entry.name}</span>
                 <span className="text-lg font-black" style={{ color: entry.color }}>

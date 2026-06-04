@@ -30,6 +30,11 @@ def format_money(value):
     return f"{Decimal(amount):.2f}"
 
 
+def decimal_money(value):
+    amount = value if value is not None else Decimal("0.00")
+    return Decimal(amount).quantize(Decimal("0.01"))
+
+
 def format_date(value):
     if not value:
         return ""
@@ -467,6 +472,11 @@ BACKUP_OPTIONAL_FILES = [
 BACKUP_PREVIEW_FILES = BACKUP_REQUIRED_FILES + BACKUP_OPTIONAL_FILES
 
 RESTORE_CONFIRMATION_PHRASE = "RESTORE MY SHOP DATA"
+MAX_BACKUP_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_BACKUP_UNCOMPRESSED_BYTES = 25 * 1024 * 1024
+MAX_BACKUP_ZIP_MEMBERS = 25
+MAX_BACKUP_CSV_ROWS = 50000
+ALLOWED_BACKUP_FILENAMES = {name for name, _label in BACKUP_PREVIEW_FILES} | {"README.txt"}
 
 
 def normalize_restore_confirmation(value):
@@ -532,17 +542,34 @@ def product_lookup_key(sku, name):
 
 def read_backup_zip(uploaded_file, required_files=None):
     required_files = required_files or BACKUP_REQUIRED_FILES
+    upload_size = getattr(uploaded_file, "size", None)
+    if upload_size and upload_size > MAX_BACKUP_UPLOAD_BYTES:
+        raise serializers.ValidationError("Backup ZIP is too large.")
 
     try:
         archive = ZipFile(uploaded_file)
     except BadZipFile as exc:
         raise serializers.ValidationError("Upload a valid Giztrack backup ZIP file.") from exc
 
-    file_map = {
-        member.split("/")[-1]: member
-        for member in archive.namelist()
-        if member and not member.endswith("/")
-    }
+    members = archive.infolist()
+    if len(members) > MAX_BACKUP_ZIP_MEMBERS:
+        archive.close()
+        raise serializers.ValidationError("Backup ZIP contains too many files.")
+
+    total_uncompressed_size = sum(member.file_size for member in members)
+    if total_uncompressed_size > MAX_BACKUP_UNCOMPRESSED_BYTES:
+        archive.close()
+        raise serializers.ValidationError("Backup ZIP expands to too much data.")
+
+    file_map = {}
+    for member in archive.namelist():
+        file_name = member.split("/")[-1]
+        if not member or member.endswith("/") or file_name not in ALLOWED_BACKUP_FILENAMES:
+            continue
+        if file_name in file_map:
+            archive.close()
+            raise serializers.ValidationError(f"Backup ZIP contains duplicate {file_name} files.")
+        file_map[file_name] = member
 
     missing_files = [name for name, _label in required_files if name not in file_map]
     if missing_files:
@@ -557,10 +584,21 @@ def read_backup_zip(uploaded_file, required_files=None):
         with archive.open(file_map[file_name]) as zipped_file:
             wrapper = TextIOWrapper(zipped_file, encoding="utf-8-sig", newline="")
             reader = csv.DictReader(wrapper)
+            rows = []
+            try:
+                for row_number, row in enumerate(reader, start=1):
+                    if row_number > MAX_BACKUP_CSV_ROWS:
+                        raise serializers.ValidationError(
+                            f"{file_name} contains too many rows."
+                        )
+                    rows.append(row)
+            except serializers.ValidationError:
+                archive.close()
+                raise
             datasets[file_name] = {
                 "label": label,
                 "headers": reader.fieldnames or [],
-                "rows": list(reader),
+                "rows": rows,
             }
 
     archive.close()
@@ -1384,7 +1422,8 @@ class DashboardView(APIView):
         todays_sales = Sale.objects.filter(shop=shop, created_at__date=today)
         todays_sales_value = todays_sales.aggregate(
             total=Sum("total_amount")
-        )["total"] or 0
+        )["total"]
+        todays_sales_value = decimal_money(todays_sales_value)
         todays_sale_count = todays_sales.count()
 
         todays_payments = SalePayment.objects.filter(
@@ -1393,7 +1432,8 @@ class DashboardView(APIView):
         ).select_related("sale")
         todays_cash_received = todays_payments.aggregate(
             total=Sum("amount")
-        )["total"] or Decimal("0.00")
+        )["total"]
+        todays_cash_received = decimal_money(todays_cash_received)
         todays_collection_count = todays_payments.filter(amount__gt=0).count()
 
         todays_realized_profit = Decimal("0.00")
@@ -1408,7 +1448,8 @@ class DashboardView(APIView):
         # ── Today's Expenses ─────────────────────────────────────────
         todays_expenses = Expense.objects.filter(shop=shop, date=today).aggregate(
             total=Sum("amount")
-        )["total"] or Decimal("0.00")
+        )["total"]
+        todays_expenses = decimal_money(todays_expenses)
 
         # Net Profit = Realized profit from collected payments - expenses
         todays_profit_net = (todays_realized_profit - todays_expenses).quantize(Decimal("0.01"))
@@ -1416,7 +1457,8 @@ class DashboardView(APIView):
         # ── All-time Revenue & Profit ────────────────────────────────
         total_revenue = Sale.objects.filter(shop=shop).aggregate(
             total=Sum("total_amount")
-        )["total"] or 0
+        )["total"]
+        total_revenue = decimal_money(total_revenue)
 
         credit_totals = Sale.objects.filter(
             shop=shop,
@@ -1466,7 +1508,7 @@ class DashboardView(APIView):
                 "profit": todays_profit_net,
             },
             "credit": {
-                "outstanding": credit_totals["outstanding"] or Decimal("0.00"),
+                "outstanding": decimal_money(credit_totals["outstanding"]),
                 "customers_with_balance": credit_totals["customers_with_balance"] or 0,
                 "sales_with_balance": credit_totals["sales_with_balance"] or 0,
             },
@@ -1818,7 +1860,7 @@ class CreditCustomersReportView(APIView):
                 "summary": {
                     "customers_with_balance": summary["customers_with_balance"] or 0,
                     "total_credit_sales": summary["total_credit_sales"] or 0,
-                    "total_outstanding": summary["total_outstanding"] or 0,
+                    "total_outstanding": decimal_money(summary["total_outstanding"]),
                 },
                 "results": [
                     {
@@ -1827,9 +1869,9 @@ class CreditCustomersReportView(APIView):
                         "phone": row["customer__phone"],
                         "email": row["customer__email"],
                         "credit_sales_count": row["credit_sales_count"],
-                        "total_credit_amount": row["total_credit_amount"] or 0,
-                        "total_paid": row["total_paid"] or 0,
-                        "total_owed": row["total_owed"] or 0,
+                        "total_credit_amount": decimal_money(row["total_credit_amount"]),
+                        "total_paid": decimal_money(row["total_paid"]),
+                        "total_owed": decimal_money(row["total_owed"]),
                         "last_credit_sale_at": row["last_credit_sale_at"],
                     }
                     for row in data

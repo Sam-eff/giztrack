@@ -169,6 +169,7 @@ export default function Dashboard() {
     const toDate = toDateInputValue(today);
     const canViewSalesTrends = (user.role === "admin" || user.role === "staff") && isPro;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError("");
     setUsingOfflineFallback(false);

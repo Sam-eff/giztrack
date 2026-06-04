@@ -23,6 +23,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenRefreshSerializer
 
 from utils.permissions import IsAdmin
+from utils.email_utils import send_giztrack_email
 from .serializers import (
     ShopRegisterSerializer,
     UserSerializer,
@@ -109,7 +110,6 @@ def _send_signup_welcome_email(shop, user):
     login_url = f"{frontend_url}/login"
 
     try:
-        from utils.email_utils import send_giztrack_email
         send_giztrack_email(
             subject=f"Welcome to Giztrack, {shop.name}",
             message=(
@@ -371,7 +371,6 @@ class ForgotPasswordView(APIView):
             reset_link = f"{frontend_url}/reset-password?uid={uid}&token={token}"
 
             try:
-                from utils.email_utils import send_giztrack_email
                 send_giztrack_email(
                     subject="Reset your Giztrack password",
                     message=(

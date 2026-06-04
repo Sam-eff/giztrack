@@ -4,6 +4,7 @@ import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import type { Supplier, PurchaseOrder, Product } from "../types";
+import { getApiErrorMessage } from "../utils/http";
 
 type ReceiveUnitDraft = {
   identifier: string;
@@ -271,6 +272,7 @@ export default function Suppliers() {
       if (suppliers.length === 0) void fetchSuppliers();
       if (products.length === 0) void fetchProducts();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, deferredSearchSupplier]);
 
   const resetSupplierForm = () => {
@@ -324,8 +326,8 @@ export default function Suppliers() {
       setShowPOModal(false);
       setPoForm({ supplier_id: "", notes: "", items: [{ product_id: "", quantity_ordered: 1, unit_cost: 0 }] });
       void fetchPurchaseOrders();
-    } catch (err: any) {
-      showError(err.response?.data?.detail || "Failed to create PO");
+    } catch (err: unknown) {
+      showError(getApiErrorMessage(err, "Failed to create PO"));
     } finally {
       poCreatePending.current = false;
       setCreatingPO(false);
@@ -337,8 +339,8 @@ export default function Suppliers() {
       await api.post(`/suppliers/purchase-orders/${po.id}/mark-ordered/`);
       success("Purchase order marked as ordered");
       void fetchPurchaseOrders();
-    } catch (err: any) {
-      showError(err.response?.data?.error || "Failed to mark order as ordered");
+    } catch (err: unknown) {
+      showError(getApiErrorMessage(err, "Failed to mark order as ordered"));
     }
   };
 

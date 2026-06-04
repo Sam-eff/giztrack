@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.shops.models import Shop
@@ -126,6 +127,14 @@ class UserSerializer(serializers.ModelSerializer):
         if obj.shop.is_in_trial:
             return "Pro Trial"
 
+        subscription = obj.shop.current_subscription
+        if (
+            subscription
+            and subscription.plan
+            and subscription.status != "pending"
+        ):
+            return subscription.plan.name
+
         return None
 
     def get_subscription_status(self, obj):
@@ -139,6 +148,10 @@ class UserSerializer(serializers.ModelSerializer):
             return "trial"
 
         subscription = obj.shop.current_subscription
+        if subscription and subscription.plan_id:
+            period_end = subscription.current_period_end or obj.shop.subscription_expires_at
+            if period_end and period_end <= timezone.now():
+                return "expired"
         return subscription.status if subscription else "inactive"
 
     def get_is_in_trial(self, obj):

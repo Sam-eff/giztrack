@@ -1,4 +1,5 @@
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.subscriptions import paystack
@@ -20,20 +21,26 @@ class Command(BaseCommand):
             help="Only reconcile one Paystack customer code.",
         )
         parser.add_argument(
+            "--subscription-code",
+            help="Only reconcile one Paystack subscription code.",
+        )
+        parser.add_argument(
             "--dry-run",
             action="store_true",
             help="Show what would change without writing to the database.",
         )
 
     def handle(self, *args, **options):
-        qs = Subscription.objects.select_related("shop", "plan").exclude(
-            paystack_customer_code=""
+        qs = Subscription.objects.select_related("shop", "plan").filter(
+            Q(paystack_customer_code__gt="") | Q(paystack_subscription_code__gt="")
         )
 
         if options["shop_id"]:
             qs = qs.filter(shop_id=options["shop_id"])
         if options["customer_code"]:
             qs = qs.filter(paystack_customer_code=options["customer_code"])
+        if options["subscription_code"]:
+            qs = qs.filter(paystack_subscription_code=options["subscription_code"])
 
         total = 0
         updated = 0
@@ -42,6 +49,7 @@ class Command(BaseCommand):
         for subscription in qs.iterator():
             total += 1
             remote_subscription = paystack.find_subscription(
+                subscription_code=subscription.paystack_subscription_code or None,
                 customer_code=subscription.paystack_customer_code,
                 plan_code=subscription.plan.paystack_plan_code if subscription.plan else None,
                 statuses=["active", "non-renewing", "attention"],

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
-import type { Customer, RepairTicket } from "../types";
+import type { Customer, Product, RepairTicket, Shop, User } from "../types";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -95,7 +95,7 @@ function TicketDetail({
   const [collectingPayment, setCollectingPayment] = useState(false);
 
   const { user } = useAuth();
-  const [shop, setShop] = useState<any>(null);
+  const [shop, setShop] = useState<Shop | null>(null);
   useEffect(() => {
     api.get("/shops/").then(({ data }) => setShop(data)).catch(() => {});
   }, []);
@@ -103,9 +103,9 @@ function TicketDetail({
   const [statusNote, setStatusNote] = useState("");
   const [partForm, setPartForm] = useState({ product_id: "", quantity: "1" });
   const [partSearch, setPartSearch] = useState("");
-  const [partSearchResults, setPartSearchResults] = useState<any[]>([]);
+  const [partSearchResults, setPartSearchResults] = useState<Product[]>([]);
   const [partSearching, setPartSearching] = useState(false);
-  const [selectedPart, setSelectedPart] = useState<any>(null);
+  const [selectedPart, setSelectedPart] = useState<Product | null>(null);
   const [paymentForm, setPaymentForm] = useState({
     amount_paid: ticket.final_cost || ticket.estimated_cost,
     final_cost: ticket.final_cost || ticket.estimated_cost,
@@ -528,7 +528,7 @@ function CreateTicket({
     technician: "", note: "",
     image: null as File | null,
   });
-  const [technicians, setTechnicians] = useState<any[]>([]);
+  const [technicians, setTechnicians] = useState<User[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -536,7 +536,7 @@ function CreateTicket({
   useEffect(() => {
     api.get("/auth/staff/")
       .then(({ data }) => {
-        const techs = (data.results || data).filter((u: any) => u.role === "technician");
+        const techs = ((data.results || data) as User[]).filter((u) => u.role === "technician");
         setTechnicians(techs);
       })
       .catch(() => {});
@@ -796,6 +796,7 @@ export default function Repairs() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchTickets(tickets.length === 0 ? "initial" : "refresh"); }, [statusFilter, page]);
 
   // Reset to page 1 when filters change

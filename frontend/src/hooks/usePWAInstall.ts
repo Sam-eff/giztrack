@@ -17,14 +17,9 @@ interface BeforeInstallPromptEvent extends Event {
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
 
 export function usePWAInstall() {
-  const [canInstall, setCanInstall] = useState(false);
+  const [canInstall, setCanInstall] = useState(() => deferredPrompt !== null);
 
   useEffect(() => {
-    // If we already captured the event before this hook mounted
-    if (deferredPrompt) {
-      setCanInstall(true);
-    }
-
     const handler = (e: Event) => {
       e.preventDefault();
       deferredPrompt = e as BeforeInstallPromptEvent;

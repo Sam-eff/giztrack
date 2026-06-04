@@ -228,7 +228,7 @@ class AuthSecurityTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(CustomUser.objects.filter(email="owner@Giztrack.com", is_superuser=True).exists())
+        self.assertTrue(CustomUser.objects.filter(email="owner@giztrack.com", is_superuser=True).exists())
 
         second_response = self.client.post(
             "/api/v1/auth/bootstrap-admin/",
@@ -288,6 +288,38 @@ class AuthSecurityTests(APITestCase):
         self.assertTrue(response.data["has_active_subscription"])
         self.assertTrue(response.data["has_app_access"])
         self.assertFalse(response.data["has_pro_access"])
+
+    def test_me_exposes_expired_paid_subscription_as_expired_plan(self):
+        pro_plan = Plan.objects.create(
+            name="Pro",
+            description="Advanced shop operations",
+            price="9000.00",
+            paystack_plan_code="PLN_test_pro_expired_me",
+            features=["Inventory", "Sales", "Repairs", "Reports"],
+        )
+        now = timezone.now()
+        Shop.objects.filter(id=self.shop.id).update(
+            created_at=now - timedelta(days=60),
+            subscription_expires_at=now - timedelta(days=1),
+        )
+        Subscription.objects.create(
+            shop=self.shop,
+            plan=pro_plan,
+            status=Subscription.Status.ACTIVE,
+            current_period_start=now - timedelta(days=31),
+            current_period_end=now - timedelta(days=1),
+        )
+        self.shop.refresh_from_db()
+        self.user.refresh_from_db()
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get("/api/v1/auth/me/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["subscription_plan"], "Pro")
+        self.assertEqual(response.data["subscription_status"], "expired")
+        self.assertFalse(response.data["has_active_subscription"])
+        self.assertFalse(response.data["has_app_access"])
 
     def test_basic_plan_does_not_keep_trial_pro_access_after_payment(self):
         basic_plan = Plan.objects.create(

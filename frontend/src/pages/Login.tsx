@@ -71,8 +71,8 @@ export default function Login() {
           {/* Center content */}
           <div>
             <h2 className="font-display text-4xl font-bold text-primary leading-tight mb-4">
-              Manage your shop<br />
-              <span className="text-accent">like a pro.</span>
+              Every device. Every sale.<br />
+              <span className="text-accent">Every repair. Under control.</span>
             </h2>
             <p className="text-slate-400 text-base leading-relaxed max-w-sm">
               Inventory, sales, repairs and customers — all in one place built for Nigerian tech shops.

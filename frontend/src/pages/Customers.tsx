@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import type { Customer, Sale, RepairTicket } from "../types";
 import api from "../api/axios";
@@ -206,7 +206,7 @@ export default function Customers() {
   // Pagination state
   const [page, setPage] = useState(1);
 
-  const fetchCustomers = () => {
+  const fetchCustomers = useCallback(() => {
     setLoading(true);
     api.get("/customers/", { params: { search: search || undefined, page } })
       .then(({ data }) => {
@@ -214,15 +214,12 @@ export default function Customers() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
+  }, [page, search]);
 
   useEffect(() => {
     const delay = setTimeout(fetchCustomers, 400);
     return () => clearTimeout(delay);
-  }, [search, page]);
-
-  // Reset to page 1 when search changes
-  useEffect(() => { setPage(1); }, [search]);
+  }, [fetchCustomers]);
 
   return (
     <>
@@ -251,7 +248,10 @@ export default function Customers() {
         </svg>
         <input
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
           placeholder="Search by name or phone..."
           className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm outline-none"
           style={inputStyle}

@@ -4,13 +4,21 @@ All HTTP calls to Paystack go through here — keeps views clean.
 """
 import requests
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 
 PAYSTACK_BASE = "https://api.paystack.co"
 
 
+def _secret_key():
+    secret_key = (settings.PAYSTACK_SECRET_KEY or "").strip()
+    if not secret_key:
+        raise ImproperlyConfigured("PAYSTACK_SECRET_KEY is required for Paystack API calls.")
+    return secret_key
+
+
 def _headers():
     return {
-        "Authorization": f"Bearer {settings.PAYSTACK_SECRET_KEY}",
+        "Authorization": f"Bearer {_secret_key()}",
         "Content-Type": "application/json",
     }
 
@@ -102,7 +110,7 @@ def list_subscriptions(page=1, per_page=50):
     return resp.json()["data"]
 
 
-def find_subscription(customer_code=None, plan_code=None, statuses=None, max_pages=5):
+def find_subscription(subscription_code=None, customer_code=None, plan_code=None, statuses=None, max_pages=10):
     """
     Finds the most relevant subscription by customer and/or plan.
     We filter locally because Paystack's list endpoint is easiest to query this way
@@ -113,6 +121,10 @@ def find_subscription(customer_code=None, plan_code=None, statuses=None, max_pag
     for page in range(1, max_pages + 1):
         records = list_subscriptions(page=page)
         for record in records:
+            if subscription_code:
+                record_subscription_code = (record.get("subscription_code") or "").strip()
+                if record_subscription_code != subscription_code:
+                    continue
             if customer_code:
                 record_customer_code = ((record.get("customer") or {}).get("customer_code") or "").strip()
                 if record_customer_code != customer_code:

@@ -178,22 +178,39 @@ const TrialBanner = ({ daysLeft }: { daysLeft: number }) => (
   </div>
 );
 
-const HardLockScreen = () => (
-  <div className="flex-1 flex flex-col items-center justify-center text-center p-6 h-full mt-8">
-    <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6" style={{ backgroundColor: "#fef2f2", color: "#dc2626" }}>
-      <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-      </svg>
+const HardLockScreen = ({
+  isPaidSubscriptionExpired,
+  planName,
+}: {
+  isPaidSubscriptionExpired: boolean;
+  planName?: string | null;
+}) => {
+  const paidPlanName = planName && planName !== "No Active Plan" ? planName : "paid";
+  const title = isPaidSubscriptionExpired
+    ? `Your ${paidPlanName} subscription has expired`
+    : "Your free trial has ended";
+  const message = isPaidSubscriptionExpired
+    ? "Renew your subscription to restore access to your inventory, sales, repairs, and reports."
+    : "Activate a Basic or Pro plan to regain access to your inventory, sales, repairs, and reports.";
+  const action = isPaidSubscriptionExpired ? "Renew Subscription" : "Choose a Plan";
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 h-full mt-8">
+      <div className="w-20 h-20 rounded-full flex items-center justify-center mb-6" style={{ backgroundColor: "#fef2f2", color: "#dc2626" }}>
+        <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+        </svg>
+      </div>
+      <h2 className="text-3xl font-display font-bold mb-3" style={{ color: "var(--color-text)" }}>{title}</h2>
+      <p className="text-base mb-8 max-w-md mx-auto" style={{ color: "var(--color-muted)" }}>
+        {message}
+      </p>
+      <Link to="/billing" className="text-white font-bold text-base px-8 py-3.5 rounded-xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5" style={{ backgroundColor: "var(--color-primary)" }}>
+        {action}
+      </Link>
     </div>
-    <h2 className="text-3xl font-display font-bold mb-3" style={{ color: "var(--color-text)" }}>Your free trial has ended</h2>
-    <p className="text-base mb-8 max-w-md mx-auto" style={{ color: "var(--color-muted)" }}>
-      Activate a Basic or Pro plan to regain access to your inventory, sales, repairs, and reports.
-    </p>
-    <Link to="/billing" className="text-white font-bold text-base px-8 py-3.5 rounded-xl shadow-lg hover:shadow-xl transition-all transform hover:-translate-y-0.5" style={{ backgroundColor: "var(--color-primary)" }}>
-      Choose a Plan
-    </Link>
-  </div>
-);
+  );
+};
 
 export default function Layout() {
   const { user, logout, isPro, isTrial, trialDaysLeft, isLocked, hasActiveSubscription } = useAuth();
@@ -206,6 +223,8 @@ export default function Layout() {
   const currentPage = navItems.find((i) =>
     i.path === "/" ? location.pathname === "/" : location.pathname.startsWith(i.path)
   );
+  const subscriptionStatus = (user?.subscription_status || "").toLowerCase();
+  const isPaidSubscriptionExpired = isLocked && !isTrial && ["expired", "cancelled", "active"].includes(subscriptionStatus);
 
   // Filter by role and Pro Plan limits before rendering
   const visibleNavItems = useMemo(
@@ -400,7 +419,10 @@ export default function Layout() {
         {/* Page content */}
         <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 print:p-0 print:overflow-visible print:bg-white min-w-0" style={{ backgroundColor: "var(--color-bg)" }}>
           {isLocked && location.pathname !== "/billing" && location.pathname !== "/settings" ? (
-            <HardLockScreen />
+            <HardLockScreen
+              isPaidSubscriptionExpired={isPaidSubscriptionExpired}
+              planName={user?.subscription_plan}
+            />
           ) : (
             <>
               {isTrial && !hasActiveSubscription && <TrialBanner daysLeft={trialDaysLeft} />}

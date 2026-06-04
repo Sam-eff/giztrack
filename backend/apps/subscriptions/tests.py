@@ -3,6 +3,7 @@ from io import StringIO
 from unittest.mock import patch
 
 from django.core.management import call_command
+from django.test import override_settings
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -546,6 +547,17 @@ class SubscriptionWebhookTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    @override_settings(PAYSTACK_SECRET_KEY="")
+    def test_webhook_signature_verification_fails_closed_without_secret(self):
+        response = self.client.post(
+            "/api/v1/subscriptions/webhook/",
+            {"event": "charge.success", "data": {}},
+            format="json",
+            HTTP_X_PAYSTACK_SIGNATURE="anything",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     @patch("apps.subscriptions.webhook.verify_signature")
     def test_charge_success_auto_renewal_expired_subscription_no_code_in_db(self, mock_verify):
         mock_verify.return_value = True
@@ -728,4 +740,36 @@ class PaystackReconciliationCommandTests(APITestCase):
         self.assertEqual(self.shop.subscription_expires_at, next_payment_date)
         self.assertIn("reconciled 1", stdout.getvalue())
 
+    @patch("apps.subscriptions.management.commands.reconcile_paystack_subscriptions.paystack.find_subscription")
+    def test_reconcile_paystack_subscriptions_can_match_by_subscription_code(self, mock_find_subscription):
+        next_payment_date = timezone.now() + timedelta(days=28)
+        self.subscription.paystack_customer_code = ""
+        self.subscription.paystack_subscription_code = "SUB_recovery_only"
+        self.subscription.save(update_fields=["paystack_customer_code", "paystack_subscription_code"])
+        mock_find_subscription.return_value = {
+            "subscription_code": "SUB_recovery_only",
+            "email_token": "EMAIL_recovered",
+            "status": "active",
+            "raw": {
+                "createdAt": timezone.now().isoformat(),
+                "next_payment_date": next_payment_date.isoformat(),
+            },
+        }
+        stdout = StringIO()
+
+        call_command(
+            "reconcile_paystack_subscriptions",
+            subscription_code="SUB_recovery_only",
+            stdout=stdout,
+        )
+
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.status, Subscription.Status.ACTIVE)
+        self.assertEqual(self.subscription.current_period_end, next_payment_date)
+        mock_find_subscription.assert_called_once_with(
+            subscription_code="SUB_recovery_only",
+            customer_code="",
+            plan_code=self.plan.paystack_plan_code,
+            statuses=["active", "non-renewing", "attention"],
+        )
 

@@ -1,5 +1,5 @@
 import { Component } from "react";
-import type { ErrorInfo, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 
 interface BoundaryProps {
@@ -56,10 +56,6 @@ class RouteErrorBoundary extends Component<BoundaryProps, BoundaryState> {
 
   static getDerivedStateFromError(error: Error): BoundaryState {
     return { error };
-  }
-
-  componentDidCatch(_error: Error, _errorInfo: ErrorInfo) {
-    // Route loading errors are shown to the user by the fallback UI.
   }
 
   componentDidUpdate(prevProps: BoundaryProps) {

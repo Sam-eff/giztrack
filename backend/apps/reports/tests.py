@@ -2,6 +2,7 @@ from io import BytesIO
 from zipfile import ZipFile
 
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
@@ -411,6 +412,60 @@ class ReportValidationTests(APITestCase):
         self.assertEqual(preview_response.data["totals"]["payments"], 1)
         self.assertEqual(preview_response.data["confirmation_phrase"], "RESTORE MY SHOP DATA")
         self.assertTrue(any(dataset["key"] == "products" for dataset in preview_response.data["datasets"]))
+
+    @patch("apps.reports.views.MAX_BACKUP_CSV_ROWS", 1)
+    def test_shop_backup_preview_rejects_backup_with_too_many_rows(self):
+        admin_user = CustomUser.objects.create_user(
+            email="oversized-admin@reports.com",
+            password="StrongPass123!",
+            first_name="Oversized",
+            last_name="Admin",
+            shop=self.shop,
+            role=Role.ADMIN,
+        )
+        pro_plan = Plan.objects.create(
+            name="Pro",
+            description="Advanced operations",
+            price="7000.00",
+            paystack_plan_code="PLN_reports_oversized_backup",
+            interval="monthly",
+        )
+        period_end = timezone.now() + timedelta(days=30)
+        Subscription.objects.create(
+            shop=self.shop,
+            plan=pro_plan,
+            status=Subscription.Status.ACTIVE,
+            current_period_end=period_end,
+        )
+        self.shop.subscription_expires_at = period_end
+        self.shop.save(update_fields=["subscription_expires_at"])
+
+        buffer = BytesIO()
+        with ZipFile(buffer, "w") as archive:
+            archive.writestr("summary.csv", "Metric,Value\nShop Name,Reports Shop\n")
+            archive.writestr(
+                "products.csv",
+                "Name,Cost Price,Selling Price,Quantity\nA,1.00,2.00,1\nB,1.00,2.00,1\n",
+            )
+            archive.writestr("customers.csv", "Name,Phone\n")
+            archive.writestr("sales.csv", "Sale ID,Total Amount\n")
+            archive.writestr("payments.csv", "Sale ID,Amount\n")
+            archive.writestr("repairs.csv", "Ticket ID,Device Type\n")
+
+        self.client.force_authenticate(user=admin_user)
+        uploaded_file = SimpleUploadedFile(
+            "oversized_backup.zip",
+            buffer.getvalue(),
+            content_type="application/zip",
+        )
+        response = self.client.post(
+            "/api/v1/reports/import/preview/",
+            {"file": uploaded_file},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("products.csv contains too many rows", str(response.data))
 
     def test_shop_backup_apply_replaces_current_shop_business_data(self):
         admin_user = CustomUser.objects.create_user(

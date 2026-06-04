@@ -287,6 +287,7 @@ export default function Settings() {
         .then(({ data }) => setStaff(data.results || data))
         .catch(() => {});
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Save profile

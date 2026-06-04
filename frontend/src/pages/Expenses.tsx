@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/axios";
 import { useToast } from "../context/ToastContext";
@@ -115,14 +115,14 @@ export default function Expenses() {
     }
   }, [canLogExpenses, formVisible]);
 
-  const fetchExpenses = () => {
+  const fetchExpenses = useCallback(() => {
     if (!isPro) {
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    const params: any = { page };
+    const params: Record<string, string | number> = { page };
     if (dateFrom) params.start_date = dateFrom;
     if (dateTo) params.end_date = dateTo;
 
@@ -133,11 +133,11 @@ export default function Expenses() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  };
+  }, [dateFrom, dateTo, isPro, page]);
 
   useEffect(() => {
     fetchExpenses();
-  }, [page, dateFrom, dateTo]);
+  }, [fetchExpenses]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

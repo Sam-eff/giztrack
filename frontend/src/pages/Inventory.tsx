@@ -366,6 +366,7 @@ export default function Inventory() {
     }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchProducts(products.length === 0 ? "initial" : "refresh"); }, [deferredSearch, categoryFilter, page]);
 
   useEffect(() => {
@@ -383,6 +384,7 @@ export default function Inventory() {
 
   useEffect(() => {
     if (viewMode === "imei") fetchUnits();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, deferredSearch, unitStatusFilter, unitConditionFilter, unitSupplierFilter, unitProductFilter]);
 
   // Barcode scanning logic
@@ -574,7 +576,7 @@ export default function Inventory() {
       if (page > 1 || products.length <= 1) {
         void fetchProducts("refresh");
       }
-    } catch (err) {
+    } catch {
       error("Failed to remove product.");
     } finally {
       setDeleteConfirmId(null);
