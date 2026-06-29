@@ -1,8 +1,9 @@
 from datetime import timedelta
+from decimal import Decimal
 from io import StringIO
 from unittest.mock import patch
 
-from django.core.management import call_command
+from django.core.management import call_command, CommandError
 from django.test import override_settings
 from django.utils import timezone
 from rest_framework import status
@@ -1076,3 +1077,67 @@ class PaystackReconciliationCommandTests(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
         self.assertIn("no matching Paystack subscription", response.data["detail"])
+
+    @patch(
+        "apps.subscriptions.management.commands.backfill_paystack_payment.paystack.verify_transaction"
+    )
+    def test_backfill_paystack_payment_creates_verified_history(
+        self,
+        mock_verify_transaction,
+    ):
+        paid_at = timezone.now()
+        mock_verify_transaction.return_value = {
+            "status": "success",
+            "reference": "ref_backfilled_renewal",
+            "amount": 300000,
+            "paid_at": paid_at.isoformat(),
+            "customer": {
+                "customer_code": self.subscription.paystack_customer_code,
+                "email": self.shop.email,
+            },
+            "plan_object": {
+                "plan_code": self.plan.paystack_plan_code,
+            },
+        }
+
+        call_command(
+            "backfill_paystack_payment",
+            shop_id=self.shop.id,
+            reference="ref_backfilled_renewal",
+        )
+
+        payment = PaymentHistory.objects.get(
+            paystack_reference="ref_backfilled_renewal"
+        )
+        self.assertEqual(payment.shop, self.shop)
+        self.assertEqual(payment.plan, self.plan)
+        self.assertEqual(payment.amount, Decimal("3000"))
+        self.assertEqual(payment.paid_at, paid_at)
+
+    @patch(
+        "apps.subscriptions.management.commands.backfill_paystack_payment.paystack.verify_transaction"
+    )
+    def test_backfill_paystack_payment_rejects_another_customer(
+        self,
+        mock_verify_transaction,
+    ):
+        mock_verify_transaction.return_value = {
+            "status": "success",
+            "reference": "ref_wrong_customer",
+            "amount": 300000,
+            "paid_at": timezone.now().isoformat(),
+            "customer": {
+                "customer_code": "CUS_someone_else",
+                "email": "someone-else@example.com",
+            },
+        }
+
+        with self.assertRaisesMessage(
+            CommandError,
+            "Transaction customer and metadata do not match this shop.",
+        ):
+            call_command(
+                "backfill_paystack_payment",
+                shop_id=self.shop.id,
+                reference="ref_wrong_customer",
+            )
