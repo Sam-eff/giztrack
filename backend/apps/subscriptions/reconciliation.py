@@ -46,6 +46,7 @@ def reconcile_subscription(subscription, dry_run=False):
     remote = paystack.find_subscription(
         subscription_code=subscription.paystack_subscription_code or None,
         customer_code=subscription.paystack_customer_code,
+        customer_email=subscription.shop.email,
         plan_code=subscription.plan.paystack_plan_code if subscription.plan else None,
         statuses=REMOTE_STATUSES,
     )
@@ -101,10 +102,18 @@ def reconcile_subscription(subscription, dry_run=False):
         remote.get("subscription_code") or subscription.paystack_subscription_code
     )
     next_email_token = remote.get("email_token") or subscription.paystack_email_token
+    remote_customer = raw.get("customer")
+    if not isinstance(remote_customer, dict):
+        remote_customer = {}
+    next_customer_code = (
+        remote_customer.get("customer_code")
+        or subscription.paystack_customer_code
+    )
     changed = any(
         [
             subscription.status != next_status,
             subscription.current_period_end != next_period_end,
+            subscription.paystack_customer_code != next_customer_code,
             subscription.paystack_subscription_code != next_subscription_code,
             subscription.paystack_email_token != next_email_token,
         ]
@@ -114,6 +123,7 @@ def reconcile_subscription(subscription, dry_run=False):
         previous_period_end = subscription.current_period_end
         subscription.status = next_status
         subscription.current_period_end = next_period_end
+        subscription.paystack_customer_code = next_customer_code
         subscription.paystack_subscription_code = next_subscription_code
         subscription.paystack_email_token = next_email_token
         if (
@@ -127,6 +137,7 @@ def reconcile_subscription(subscription, dry_run=False):
                 "status",
                 "current_period_start",
                 "current_period_end",
+                "paystack_customer_code",
                 "paystack_subscription_code",
                 "paystack_email_token",
                 "updated_at",
@@ -152,17 +163,25 @@ def reconcile_subscription(subscription, dry_run=False):
 
 
 def due_subscriptions_queryset():
-    cutoff = timezone.now() + timedelta(hours=6)
+    now = timezone.now()
+    cutoff = now + timedelta(hours=6)
+    oldest_recoverable_period = now - timedelta(days=45)
     return (
         Subscription.objects.select_related("shop", "plan")
         .filter(status__in=[Subscription.Status.ACTIVE, Subscription.Status.EXPIRED])
         .filter(
-            Q(paystack_customer_code__gt="")
-            | Q(paystack_subscription_code__gt="")
+            plan__paystack_plan_code__isnull=False,
         )
+        .exclude(plan__paystack_plan_code="")
         .filter(
-            Q(current_period_end__lte=cutoff)
-            | Q(shop__subscription_expires_at__lte=cutoff)
+            Q(
+                current_period_end__gte=oldest_recoverable_period,
+                current_period_end__lte=cutoff,
+            )
+            | Q(
+                shop__subscription_expires_at__gte=oldest_recoverable_period,
+                shop__subscription_expires_at__lte=cutoff,
+            )
             | Q(
                 current_period_end__isnull=True,
                 shop__subscription_expires_at__isnull=True,

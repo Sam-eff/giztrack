@@ -334,11 +334,14 @@ class SyncSubscriptionView(APIView):
             )
 
         if not (
-            subscription.paystack_customer_code
-            or subscription.paystack_subscription_code
+            subscription.paystack_subscription_code
+            or (
+                subscription.plan
+                and subscription.plan.paystack_plan_code
+            )
         ):
             return Response(
-                {"detail": "No Paystack subscription identifiers are available."},
+                {"detail": "No Paystack subscription or plan identifier is available."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -355,6 +358,24 @@ class SyncSubscriptionView(APIView):
             )
 
         subscription.refresh_from_db()
+        subscription.shop.refresh_from_db()
+        logger.info(
+            "On-demand Paystack reconciliation result for shop=%s: %s",
+            request.user.shop_id,
+            result,
+        )
+        if not subscription.shop.has_app_access:
+            return Response(
+                {
+                    "detail": (
+                        "Paystack sync did not restore access: "
+                        f"{result.get('reason', 'subscription is not active')}."
+                    ),
+                    "reconciliation": result,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
         return Response(
             {
                 "reconciliation": result,

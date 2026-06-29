@@ -100,12 +100,16 @@ def verify_transaction(reference):
     return resp.json()["data"]
 
 
-def list_subscriptions(page=1, per_page=50):
+def list_subscriptions(page=1, per_page=50, customer_id=None):
     """Lists subscriptions on the integration."""
+    params = {"page": page, "perPage": per_page}
+    if customer_id:
+        params["customer"] = customer_id
+
     resp = requests.get(
         f"{PAYSTACK_BASE}/subscription",
         headers=_headers(),
-        params={"page": page, "perPage": per_page},
+        params=params,
         timeout=10,
     )
     _raise_for_status(resp)
@@ -127,7 +131,29 @@ def fetch_subscription(subscription_code):
     return resp.json()["data"]
 
 
-def find_subscription(subscription_code=None, customer_code=None, plan_code=None, statuses=None, max_pages=10):
+def fetch_customer(email_or_code):
+    """Fetches a Paystack customer, including their subscription records."""
+    identifier = (email_or_code or "").strip()
+    if not identifier:
+        raise ValueError("email_or_code is required")
+
+    resp = requests.get(
+        f"{PAYSTACK_BASE}/customer/{quote(identifier, safe='')}",
+        headers=_headers(),
+        timeout=10,
+    )
+    _raise_for_status(resp)
+    return resp.json()["data"]
+
+
+def find_subscription(
+    subscription_code=None,
+    customer_code=None,
+    customer_email=None,
+    plan_code=None,
+    statuses=None,
+    max_pages=10,
+):
     """
     Finds the most relevant subscription by customer and/or plan.
     We filter locally because Paystack's list endpoint is easiest to query this way
@@ -135,17 +161,27 @@ def find_subscription(subscription_code=None, customer_code=None, plan_code=None
     """
     allowed_statuses = set(statuses or ["active"])
 
+    def mapping(value):
+        return value if isinstance(value, dict) else {}
+
+    def status_matches(record):
+        record_status = (record.get("status") or "").strip().lower()
+        return not allowed_statuses or record_status in allowed_statuses
+
     def matches(record):
         if customer_code:
-            record_customer_code = ((record.get("customer") or {}).get("customer_code") or "").strip()
+            record_customer_code = (
+                mapping(record.get("customer")).get("customer_code") or ""
+            ).strip()
             if record_customer_code != customer_code:
                 return False
         if plan_code:
-            record_plan_code = ((record.get("plan") or {}).get("plan_code") or "").strip()
+            record_plan_code = (
+                mapping(record.get("plan")).get("plan_code") or ""
+            ).strip()
             if record_plan_code != plan_code:
                 return False
-        record_status = (record.get("status") or "").strip().lower()
-        return not allowed_statuses or record_status in allowed_statuses
+        return status_matches(record)
 
     def result(record):
         return {
@@ -159,25 +195,74 @@ def find_subscription(subscription_code=None, customer_code=None, plan_code=None
         try:
             record = fetch_subscription(subscription_code)
         except Exception:
-            if not customer_code:
+            if not customer_code and not customer_email:
                 raise
         else:
-            if matches(record):
+            # The exact subscription code is the strongest identifier. Customer
+            # and plan values may legitimately become stale after account or plan
+            # changes, so recover them from this authoritative record.
+            if status_matches(record):
                 return result(record)
 
     per_page = 50
-    for page in range(1, max_pages + 1):
-        records = list_subscriptions(page=page, per_page=per_page)
-        for record in records:
-            if subscription_code:
-                record_subscription_code = (record.get("subscription_code") or "").strip()
-                if not customer_code and record_subscription_code != subscription_code:
+    if subscription_code or customer_code:
+        for page in range(1, max_pages + 1):
+            records = list_subscriptions(page=page, per_page=per_page)
+            for record in records:
+                if subscription_code:
+                    record_subscription_code = (record.get("subscription_code") or "").strip()
+                    if not customer_code and record_subscription_code != subscription_code:
+                        continue
+                if not matches(record):
                     continue
-            if not matches(record):
+                return result(record)
+            if len(records) < per_page:
+                break
+
+    if customer_email:
+        customer = fetch_customer(customer_email)
+        recovered_customer_code = (customer.get("customer_code") or "").strip()
+        customer_records = []
+        customer_id = customer.get("id")
+        if customer_id:
+            for page in range(1, max_pages + 1):
+                records = list_subscriptions(
+                    page=page,
+                    per_page=per_page,
+                    customer_id=customer_id,
+                )
+                customer_records.extend(records)
+                if len(records) < per_page:
+                    break
+        if not customer_records:
+            customer_records = customer.get("subscriptions") or []
+
+        candidates = []
+        for record in customer_records:
+            if not isinstance(record, dict) or not status_matches(record):
                 continue
-            return result(record)
-        if len(records) < per_page:
-            break
+            record_plan_code = (
+                mapping(record.get("plan")).get("plan_code") or ""
+            ).strip()
+            if plan_code and record_plan_code != plan_code:
+                continue
+            normalized_record = dict(record)
+            normalized_record["customer"] = {
+                "customer_code": recovered_customer_code,
+                "email": customer.get("email") or customer_email,
+            }
+            candidates.append(normalized_record)
+
+        if candidates:
+            candidates.sort(
+                key=lambda record: (
+                    record.get("next_payment_date") or "",
+                    record.get("updatedAt") or record.get("updated_at") or "",
+                ),
+                reverse=True,
+            )
+            return result(candidates[0])
+
     return None
 
 

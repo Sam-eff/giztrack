@@ -10,7 +10,75 @@ from rest_framework.test import APITestCase
 
 from apps.accounts.models import CustomUser, Role
 from apps.shops.models import Shop
+from . import paystack
 from .models import PaymentHistory, PaystackWebhookEvent, Plan, Subscription
+
+
+class PaystackSubscriptionLookupTests(APITestCase):
+    @patch("apps.subscriptions.paystack.list_subscriptions")
+    @patch("apps.subscriptions.paystack.fetch_subscription")
+    def test_exact_subscription_code_recovers_stale_customer_and_plan(
+        self,
+        mock_fetch_subscription,
+        mock_list_subscriptions,
+    ):
+        mock_fetch_subscription.return_value = {
+            "subscription_code": "SUB_exact",
+            "email_token": "EMAIL_exact",
+            "status": "active",
+            "next_payment_date": (timezone.now() + timedelta(days=30)).isoformat(),
+            "customer": {"customer_code": "CUS_current"},
+            "plan": {"plan_code": "PLN_current"},
+        }
+
+        result = paystack.find_subscription(
+            subscription_code="SUB_exact",
+            customer_code="CUS_stale",
+            plan_code="PLN_stale",
+            statuses=["active"],
+        )
+
+        self.assertEqual(result["subscription_code"], "SUB_exact")
+        self.assertEqual(
+            result["raw"]["customer"]["customer_code"],
+            "CUS_current",
+        )
+        mock_list_subscriptions.assert_not_called()
+
+    @patch("apps.subscriptions.paystack.fetch_customer")
+    @patch("apps.subscriptions.paystack.list_subscriptions")
+    def test_customer_email_recovers_subscription_when_codes_are_missing(
+        self,
+        mock_list_subscriptions,
+        mock_fetch_customer,
+    ):
+        next_payment_date = timezone.now() + timedelta(days=30)
+        mock_list_subscriptions.return_value = []
+        mock_fetch_customer.return_value = {
+            "email": "owner@example.com",
+            "customer_code": "CUS_recovered",
+            "subscriptions": [
+                {
+                    "subscription_code": "SUB_recovered",
+                    "email_token": "EMAIL_recovered",
+                    "status": "active",
+                    "next_payment_date": next_payment_date.isoformat(),
+                    "plan": {"plan_code": "PLN_basic"},
+                }
+            ],
+        }
+
+        result = paystack.find_subscription(
+            customer_email="owner@example.com",
+            plan_code="PLN_basic",
+            statuses=["active"],
+        )
+
+        self.assertEqual(result["subscription_code"], "SUB_recovered")
+        self.assertEqual(
+            result["raw"]["customer"]["customer_code"],
+            "CUS_recovered",
+        )
 
 
 class SubscriptionCallbackTests(APITestCase):
@@ -925,6 +993,7 @@ class PaystackReconciliationCommandTests(APITestCase):
         mock_find_subscription.assert_called_once_with(
             subscription_code="SUB_recovery_only",
             customer_code="",
+            customer_email=self.shop.email,
             plan_code=self.plan.paystack_plan_code,
             statuses=["active", "non-renewing", "attention", "completed", "cancelled"],
         )
@@ -982,3 +1051,28 @@ class PaystackReconciliationCommandTests(APITestCase):
         self.assertEqual(self.subscription.status, Subscription.Status.ACTIVE)
         self.assertEqual(self.subscription.current_period_end, next_payment_date)
         self.assertTrue(self.shop.subscription_is_active)
+
+    @patch("apps.subscriptions.reconciliation.paystack.find_subscription")
+    def test_sync_endpoint_explains_when_no_remote_subscription_matches(
+        self,
+        mock_find_subscription,
+    ):
+        mock_find_subscription.return_value = None
+        Shop.objects.filter(pk=self.shop.pk).update(
+            created_at=timezone.now() - timedelta(days=60)
+        )
+        self.shop.refresh_from_db()
+        user = CustomUser.objects.create_user(
+            email="unmatched-admin@example.com",
+            password="StrongPass123!",
+            first_name="Unmatched",
+            last_name="Admin",
+            shop=self.shop,
+            role=Role.ADMIN,
+        )
+        self.client.force_authenticate(user=user)
+
+        response = self.client.post("/api/v1/subscriptions/sync/")
+
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn("no matching Paystack subscription", response.data["detail"])
