@@ -69,6 +69,7 @@ Development URLs:
 ## Documentation
 
 - [Development Guide](./docs/DEVELOPMENT.md)
+- [Architecture Roadmap](./docs/ARCHITECTURE_ROADMAP.md)
 - [Production Rollout](./PRODUCTION.md)
 
 ## Security Notes

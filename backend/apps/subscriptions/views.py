@@ -1,4 +1,5 @@
 import json
+import hashlib
 import logging
 import secrets
 from django.views.decorators.csrf import csrf_exempt
@@ -8,10 +9,11 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework import status
+from rest_framework.throttling import ScopedRateThrottle
 from django.shortcuts import redirect as django_redirect
 from django.conf import settings
 from utils.permissions import IsAdmin
-from .models import Plan, Subscription, PaymentHistory
+from .models import PaymentHistory, PaystackWebhookEvent, Plan, Subscription
 from .serializers import (
     PlanSerializer,
     SubscriptionSerializer,
@@ -19,6 +21,7 @@ from .serializers import (
     PaymentHistorySerializer,
 )
 from . import paystack, webhook
+from .reconciliation import reconcile_subscription
 
 logger = logging.getLogger(__name__)
 
@@ -303,6 +306,63 @@ class PaymentHistoryView(APIView):
         return Response(PaymentHistorySerializer(payments, many=True).data)
 
 
+class SyncSubscriptionView(APIView):
+    """
+    POST /subscriptions/sync/
+    Refreshes an expired local subscription from Paystack. This is an immediate
+    recovery path in addition to webhooks and scheduled reconciliation.
+    """
+    permission_classes = [IsAuthenticated, IsAdmin]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "subscription_sync"
+
+    def post(self, request):
+        try:
+            subscription = Subscription.objects.select_related("shop", "plan").get(
+                shop=request.user.shop
+            )
+        except Subscription.DoesNotExist:
+            return Response(
+                {"error": "No subscription record found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if subscription.status == Subscription.Status.CANCELLED:
+            return Response(
+                {"detail": "Cancelled subscriptions are not automatically reactivated."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not (
+            subscription.paystack_customer_code
+            or subscription.paystack_subscription_code
+        ):
+            return Response(
+                {"detail": "No Paystack subscription identifiers are available."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            result = reconcile_subscription(subscription)
+        except Exception:
+            logger.exception(
+                "On-demand Paystack reconciliation failed for shop=%s",
+                request.user.shop_id,
+            )
+            return Response(
+                {"error": "Could not confirm subscription status with Paystack."},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        subscription.refresh_from_db()
+        return Response(
+            {
+                "reconciliation": result,
+                "subscription": SubscriptionSerializer(subscription).data,
+            }
+        )
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class PaystackWebhookView(APIView):
     """
@@ -319,14 +379,73 @@ class PaystackWebhookView(APIView):
 
         try:
             payload = json.loads(request.body)
-            event_type = payload.get("event")
-            data = payload.get("data", {})
-            webhook.handle_event(event_type, data)
-        except Exception as e:
-            # Always return 200 to Paystack even on internal errors
-            # so it doesn't keep retrying, but log the error.
-            logger.exception("Error processing Paystack webhook event %s: %s", event_type if 'event_type' in locals() else 'unknown', e)
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+            return Response(
+                {"error": "Invalid JSON payload."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
+        if not isinstance(payload, dict) or not payload.get("event"):
+            return Response(
+                {"error": "Webhook event type is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        event_type = str(payload["event"])[:100]
+        data = payload.get("data", {})
+        event_data = data if isinstance(data, dict) else {}
+        payload_hash = hashlib.sha256(request.body).hexdigest()
+        event, _created = PaystackWebhookEvent.objects.get_or_create(
+            payload_hash=payload_hash,
+            defaults={
+                "event_type": event_type,
+                "event_key": webhook.event_key(event_data),
+            },
+        )
+
+        if event.status in {
+            PaystackWebhookEvent.Status.PROCESSED,
+            PaystackWebhookEvent.Status.IGNORED,
+        }:
+            return Response({"status": "ok", "duplicate": True})
+
+        event.attempts += 1
+        event.status = PaystackWebhookEvent.Status.RECEIVED
+        event.last_error = ""
+        event.processed_at = None
+        event.save(
+            update_fields=[
+                "attempts",
+                "status",
+                "last_error",
+                "processed_at",
+            ]
+        )
+
+        try:
+            result = webhook.handle_event(event_type, data)
+        except Exception as exc:
+            event.status = PaystackWebhookEvent.Status.FAILED
+            event.last_error = str(exc)[:4000]
+            event.processed_at = timezone.now()
+            event.save(update_fields=["status", "last_error", "processed_at"])
+            logger.exception(
+                "Error processing Paystack webhook event=%s key=%s",
+                event_type,
+                event.event_key,
+            )
+            return Response(
+                {"status": "error"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        event.status = (
+            PaystackWebhookEvent.Status.IGNORED
+            if result == "ignored"
+            else PaystackWebhookEvent.Status.PROCESSED
+        )
+        event.processed_at = timezone.now()
+        event.save(update_fields=["status", "processed_at"])
         return Response({"status": "ok"})
 
 

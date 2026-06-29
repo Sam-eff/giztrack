@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import type { AxiosError } from "axios";
 import api from "../api/axios";
 import { useAuth } from "../context/AuthContext";
 import ConfirmModal from "../components/ConfirmModal";
@@ -184,7 +185,14 @@ function PlanCard({ plan, current, onSelect, loading, disabledReason, monthlyPla
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function Billing() {
-  const { user, isTrial, trialDaysLeft, hasActiveSubscription, subscriptionPlan } = useAuth();
+  const {
+    user,
+    isTrial,
+    trialDaysLeft,
+    hasActiveSubscription,
+    subscriptionPlan,
+    setCurrentUser,
+  } = useAuth();
   const isAdmin = user?.role === "admin";
 
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -202,22 +210,44 @@ export default function Billing() {
 
   const fetchAll = async () => {
     setLoading(true);
+    setError("");
+
+    if (isAdmin && !hasActiveSubscription) {
+      try {
+        await api.post("/subscriptions/sync/");
+      } catch (syncError: unknown) {
+        const status = (syncError as AxiosError)?.response?.status;
+        if (status !== 400 && status !== 404) {
+          setError(
+            getApiErrorMessage(
+              syncError,
+              "We could not refresh your Paystack subscription status.",
+            ),
+          );
+        }
+      }
+    }
+
     try {
-      const [plansRes, subRes, paymentsRes] = await Promise.all([
+      const [plansRes, subRes, paymentsRes, userRes] = await Promise.all([
         api.get("/subscriptions/plans/"),
         api.get("/subscriptions/current/"),
         api.get("/subscriptions/payments/"),
+        api.get("/auth/me/"),
       ]);
       setPlans(plansRes.data.results || plansRes.data);
       setSubscription(subRes.data?.status === "no_subscription" ? null : subRes.data);
       setPayments(paymentsRes.data.results || paymentsRes.data);
-    } catch {
-      // subscription might not exist yet — that's fine
+      setCurrentUser(userRes.data);
+    } catch (fetchError: unknown) {
+      setError(getApiErrorMessage(fetchError, "Could not load billing information."));
     } finally {
       setLoading(false);
     }
   };
 
+  // Run provider recovery once when the billing screen opens.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchAll(); }, []);
 
   // Handle Paystack redirect

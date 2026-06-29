@@ -256,6 +256,7 @@ REST_FRAMEWORK = {
         "anon": "30/minute",          # Unauthenticated (login, forgot-password)
         "user": "200/minute",         # Authenticated users
         "password_reset": "5/hour",   # Tight limit on forgot/reset-password (anti email-bomb)
+        "subscription_sync": "12/hour",
     },
 }
 

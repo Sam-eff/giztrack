@@ -6,15 +6,21 @@ import calendar
 import hashlib
 import hmac
 import logging
-from django.conf import settings
-from django.utils import timezone
+from decimal import Decimal, InvalidOperation
 from datetime import datetime
+
+from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
 
 from apps.shops.models import Shop
 from .models import Subscription, PaymentHistory, Plan
-from . import paystack
 
 logger = logging.getLogger(__name__)
+
+
+class WebhookProcessingError(Exception):
+    pass
 
 
 def verify_signature(request):
@@ -43,14 +49,14 @@ def verify_signature(request):
     return verified
 
 
-
-
 def handle_event(event_type, data):
     """Routes incoming webhook events to the right handler."""
     handlers = {
         "subscription.create": on_subscription_create,
+        "subscription.not_renew": on_subscription_not_renew,
         "subscription.disable": on_subscription_disable,
         "charge.success": on_payment_success,
+        # Kept for compatibility, although Paystack documents invoice.update.
         "invoice.payment_success": on_invoice_payment_success,
         "invoice.update": on_invoice_update,
         "invoice.payment_failed": on_payment_failed,
@@ -58,13 +64,62 @@ def handle_event(event_type, data):
     handler = handlers.get(event_type)
     if handler:
         logger.info("Handling Paystack event: %s", event_type)
-        handler(data)
-    else:
-        logger.debug("Ignoring unhandled Paystack event: %s", event_type)
+        return handler(data)
+
+    logger.debug("Ignoring unhandled Paystack event: %s", event_type)
+    return "ignored"
+
+
+def _as_dict(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _subscription_payload(data):
+    return _as_dict(data.get("subscription"))
+
+
+def _customer_payload(data):
+    return _as_dict(data.get("customer"))
+
+
+def _transaction_payload(data):
+    return _as_dict(data.get("transaction"))
+
+
+def _subscription_code(data):
+    raw_subscription = data.get("subscription")
+    string_subscription = (
+        raw_subscription
+        if isinstance(raw_subscription, str) and raw_subscription.startswith("SUB_")
+        else ""
+    )
+    return (
+        data.get("subscription_code")
+        or _subscription_payload(data).get("subscription_code")
+        or string_subscription
+        or ""
+    )
+
+
+def event_key(data):
+    """Returns a non-sensitive identifier for webhook audit records."""
+    transaction_payload = _transaction_payload(data)
+    return str(
+        data.get("reference")
+        or transaction_payload.get("reference")
+        or data.get("invoice_code")
+        or _subscription_code(data)
+        or _customer_payload(data).get("customer_code")
+        or ""
+    )[:200]
 
 
 def _parse_datetime(value):
     if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if not isinstance(value, str):
         return None
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -129,7 +184,7 @@ def _paid_through(subscription):
 
 
 def _resolve_plan(data):
-    metadata = data.get("metadata") or {}
+    metadata = _as_dict(data.get("metadata"))
     plan_id = metadata.get("plan_id")
     if plan_id:
         try:
@@ -137,7 +192,15 @@ def _resolve_plan(data):
         except (Plan.DoesNotExist, TypeError, ValueError):
             pass
 
-    plan_code = (data.get("plan_object") or {}).get("plan_code")
+    candidates = [
+        _as_dict(data.get("plan_object")),
+        _as_dict(data.get("plan")),
+        _as_dict(_subscription_payload(data).get("plan")),
+    ]
+    plan_code = next(
+        (candidate.get("plan_code") for candidate in candidates if candidate.get("plan_code")),
+        "",
+    )
     if plan_code:
         try:
             return Plan.objects.get(paystack_plan_code=plan_code)
@@ -148,7 +211,7 @@ def _resolve_plan(data):
 
 
 def _resolve_subscription(data, plan=None):
-    metadata = data.get("metadata") or {}
+    metadata = _as_dict(data.get("metadata"))
     shop_id = metadata.get("shop_id")
     if shop_id:
         try:
@@ -157,10 +220,7 @@ def _resolve_subscription(data, plan=None):
             pass
 
     # Try by subscription_code — most reliable for renewal events
-    subscription_code = (
-        data.get("subscription_code")
-        or (data.get("subscription") or {}).get("subscription_code")
-    )
+    subscription_code = _subscription_code(data)
     if subscription_code:
         try:
             return Subscription.objects.select_related("shop", "plan").get(
@@ -169,7 +229,8 @@ def _resolve_subscription(data, plan=None):
         except Subscription.DoesNotExist:
             pass
 
-    customer_code = (data.get("customer") or {}).get("customer_code")
+    customer = _customer_payload(data)
+    customer_code = customer.get("customer_code")
     if customer_code:
         try:
             return Subscription.objects.select_related("shop", "plan").get(
@@ -179,7 +240,7 @@ def _resolve_subscription(data, plan=None):
             pass
 
     if plan:
-        customer_email = (data.get("customer") or {}).get("email")
+        customer_email = customer.get("email")
         if customer_email:
             try:
                 shop = Shop.objects.get(email=customer_email)
@@ -195,19 +256,24 @@ def _resolve_subscription(data, plan=None):
 
 
 def activate_subscription_from_transaction(data):
-    metadata = data.get("metadata") or {}
-    subscription_payload = data.get("subscription") or {}
-    reference = data.get("reference") or (data.get("transaction") or {}).get("reference", "")
-    amount_kobo = data.get("amount", 0) or 0
-    paid_at = _parse_datetime(data.get("paid_at")) or timezone.now()
+    metadata = _as_dict(data.get("metadata"))
+    subscription_payload = _subscription_payload(data)
+    transaction_payload = _transaction_payload(data)
+    customer = _customer_payload(data)
+    reference = data.get("reference") or transaction_payload.get("reference", "")
+    amount_kobo = data.get("amount") or transaction_payload.get("amount") or 0
+    paid_at = (
+        _parse_datetime(data.get("paid_at"))
+        or _parse_datetime(transaction_payload.get("paid_at"))
+        or timezone.now()
+    )
     plan = _resolve_plan(data)
     subscription = _resolve_subscription(data, plan=plan)
     if not subscription:
-        return "ignored"
+        return "unresolved"
 
     subscription_code = (
-        data.get("subscription_code")
-        or subscription_payload.get("subscription_code")
+        _subscription_code(data)
         or subscription.paystack_subscription_code
     )
     email_token = (
@@ -216,11 +282,8 @@ def activate_subscription_from_transaction(data):
         or subscription.paystack_email_token
     )
     checkout_token = metadata.get("checkout_token", "")
-    customer_code = (data.get("customer") or {}).get("customer_code", "")
-    is_recurring_charge_payload = bool(
-        data.get("subscription_code")
-        or (data.get("subscription") or {}).get("subscription_code")
-    )
+    customer_code = customer.get("customer_code", "")
+    is_recurring_charge_payload = bool(_subscription_code(data))
     is_known_recurring_charge = bool(
         subscription_code
         and (
@@ -282,232 +345,182 @@ def activate_subscription_from_transaction(data):
     if customer_code and subscription.paystack_customer_code != customer_code:
         subscription.paystack_customer_code = customer_code
 
-    if (not subscription_code or not email_token) and customer_code and plan and plan.paystack_plan_code:
-        try:
-            remote_subscription = paystack.find_subscription(
-                customer_code=customer_code,
-                plan_code=plan.paystack_plan_code,
-                statuses=["active", "non-renewing", "attention"],
-            )
-        except Exception:
-            remote_subscription = None
-        if remote_subscription:
-            subscription_code = subscription_code or remote_subscription.get("subscription_code", "")
-            email_token = email_token or remote_subscription.get("email_token", "")
-
     period_start = (
-        _parse_datetime(data.get("createdAt"))
+        _parse_datetime(data.get("period_start"))
         or _parse_datetime(data.get("paid_at"))
+        or _parse_datetime(data.get("created_at"))
+        or _parse_datetime(data.get("createdAt"))
         or timezone.now()
     )
-    period_end = (
-        _parse_datetime(data.get("next_payment_date"))
-        or _parse_datetime(subscription_payload.get("next_payment_date"))
-        or _calculate_period_end(period_start, (subscription.plan.interval if subscription.plan else "monthly"))
+    candidate_period_end = (
+        _parse_datetime(subscription_payload.get("next_payment_date"))
+        or _parse_datetime(data.get("next_payment_date"))
+        or _parse_datetime(data.get("nextPaymentDate"))
     )
-
-    subscription.paystack_subscription_code = subscription_code or ""
-    subscription.paystack_email_token = email_token or ""
-    subscription.status = Subscription.Status.ACTIVE
-    subscription.current_period_start = period_start
-    subscription.current_period_end = period_end
-    if is_pending_checkout_charge:
-        subscription.pending_plan = None
-        subscription.pending_checkout_reference = ""
-        subscription.pending_checkout_token = ""
-        subscription.pending_checkout_started_at = None
-    subscription.save()
-
-    if period_end:
-        subscription.shop.subscription_expires_at = period_end
-        subscription.shop.save(update_fields=["subscription_expires_at"])
-
-    if reference:
-        PaymentHistory.objects.get_or_create(
-            paystack_reference=reference,
-            defaults={
-                "shop": subscription.shop,
-                "plan": subscription.plan,
-                "amount": amount_kobo / 100,
-                "paid_at": paid_at,
-            },
+    invoice_period_end = _parse_datetime(data.get("period_end"))
+    if not candidate_period_end and invoice_period_end and invoice_period_end > period_start:
+        candidate_period_end = invoice_period_end
+    if not candidate_period_end:
+        candidate_period_end = _calculate_period_end(
+            period_start,
+            subscription.plan.interval if subscription.plan else "monthly",
         )
+
+    existing_paid_through = _paid_through(subscription)
+    period_end = max(
+        value
+        for value in (existing_paid_through, candidate_period_end)
+        if value
+    )
+    if (
+        existing_paid_through
+        and candidate_period_end <= existing_paid_through
+        and subscription.current_period_start
+    ):
+        period_start = subscription.current_period_start
+
+    try:
+        amount = Decimal(str(amount_kobo)) / Decimal("100")
+    except (InvalidOperation, TypeError, ValueError):
+        amount = Decimal("0")
+
+    with transaction.atomic():
+        subscription = (
+            Subscription.objects.select_for_update()
+            .select_related("shop", "plan")
+            .get(pk=subscription.pk)
+        )
+        locked_paid_through = _paid_through(subscription)
+        if locked_paid_through and locked_paid_through > period_end:
+            period_end = locked_paid_through
+            if subscription.current_period_start:
+                period_start = subscription.current_period_start
+        if plan and subscription.plan_id != plan.id:
+            subscription.plan = plan
+        if customer_code:
+            subscription.paystack_customer_code = customer_code
+        subscription.paystack_subscription_code = subscription_code or ""
+        subscription.paystack_email_token = email_token or ""
+        subscription.status = Subscription.Status.ACTIVE
+        subscription.current_period_start = period_start
+        subscription.current_period_end = period_end
+        if is_pending_checkout_charge:
+            subscription.pending_plan = None
+            subscription.pending_checkout_reference = ""
+            subscription.pending_checkout_token = ""
+            subscription.pending_checkout_started_at = None
+        subscription.save()
+
+        if period_end and (
+            not subscription.shop.subscription_expires_at
+            or period_end > subscription.shop.subscription_expires_at
+        ):
+            subscription.shop.subscription_expires_at = period_end
+            subscription.shop.save(update_fields=["subscription_expires_at"])
+
+        if reference:
+            PaymentHistory.objects.get_or_create(
+                paystack_reference=reference,
+                defaults={
+                    "shop": subscription.shop,
+                    "plan": subscription.plan,
+                    "amount": amount,
+                    "paid_at": paid_at,
+                },
+            )
 
     return "activated"
 
 
 def on_subscription_create(data):
-    customer_code = data.get("customer", {}).get("customer_code")
-    subscription_code = data.get("subscription_code")
-    email_token = data.get("email_token", "")
-    period_start = _parse_datetime(data.get("createdAt"))
-    period_end = _parse_datetime(data.get("next_payment_date"))
+    result = activate_subscription_from_transaction(data)
+    if result == "unresolved":
+        raise WebhookProcessingError("Could not resolve subscription.create to a local shop")
 
-    try:
-        subscription = Subscription.objects.get(paystack_customer_code=customer_code)
-        subscription.paystack_subscription_code = subscription_code
-        subscription.paystack_email_token = email_token
-        subscription.status = Subscription.Status.ACTIVE
-        subscription.current_period_start = period_start
-        subscription.current_period_end = period_end
+    subscription = _resolve_subscription(data, plan=_resolve_plan(data))
+    if subscription and subscription.has_pending_checkout:
         subscription.pending_plan = None
         subscription.pending_checkout_reference = ""
         subscription.pending_checkout_token = ""
         subscription.pending_checkout_started_at = None
-        subscription.save()
-
-        # Extend the shop's access
-        if period_end:
-            subscription.shop.subscription_expires_at = period_end
-            subscription.shop.save()
-
-    except Subscription.DoesNotExist:
-        pass
-
-
-def on_subscription_disable(data):
-    subscription_code = data.get("subscription_code")
-    try:
-        subscription = Subscription.objects.get(
-            paystack_subscription_code=subscription_code
+        subscription.save(
+            update_fields=[
+                "pending_plan",
+                "pending_checkout_reference",
+                "pending_checkout_token",
+                "pending_checkout_started_at",
+                "updated_at",
+            ]
         )
-        subscription.status = Subscription.Status.CANCELLED
-        subscription.save()
-    except Subscription.DoesNotExist:
-        pass
+    return result
+
+
+def _mark_subscription_cancelled(data):
+    subscription = _resolve_subscription(data, plan=_resolve_plan(data))
+    if not subscription:
+        return "ignored"
+    subscription.status = Subscription.Status.CANCELLED
+    subscription.save(update_fields=["status", "updated_at"])
+    return "processed"
 
 
 def on_payment_success(data):
     result = activate_subscription_from_transaction(data)
+    if result == "unresolved":
+        raise WebhookProcessingError("Could not resolve charge.success to a local subscription")
     logger.info("charge.success result: %s", result)
+    return result
+
+
+def on_subscription_not_renew(data):
+    return _mark_subscription_cancelled(data)
+
+
+def on_subscription_disable(data):
+    return _mark_subscription_cancelled(data)
 
 
 def on_invoice_payment_success(data):
-    """
-    Handles invoice.payment_success — fired by Paystack for subscription renewals.
-    The data structure differs from charge.success:
-    - subscription_code is at data.subscription_code (top-level)
-    - customer is at data.customer
-    - transaction details may be nested under data.transaction
-    """
-    subscription_code = (
-        data.get("subscription_code")
-        or (data.get("subscription") or {}).get("subscription_code")
-        or ""
-    )
-    customer = data.get("customer") or {}
-    customer_code = customer.get("customer_code", "")
-
-    # Find subscription — try subscription_code first (most reliable for renewals)
-    subscription = None
-    if subscription_code:
-        try:
-            subscription = Subscription.objects.select_related("shop", "plan").get(
-                paystack_subscription_code=subscription_code
-            )
-        except Subscription.DoesNotExist:
-            pass
-
-    # Fallback to customer_code
-    if not subscription and customer_code:
-        try:
-            subscription = Subscription.objects.select_related("shop", "plan").get(
-                paystack_customer_code=customer_code
-            )
-        except Subscription.DoesNotExist:
-            pass
-
-    if not subscription:
-        logger.warning(
-            "invoice.payment_success: could not resolve subscription "
-            "(subscription_code=%s, customer_code=%s)",
-            subscription_code, customer_code,
-        )
-        return
-
-    # Extract period dates
-    period_start = _parse_datetime(data.get("paid_at")) or timezone.now()
-    period_end = (
-        _parse_datetime(data.get("next_payment_date"))
-        or _calculate_period_end(
-            period_start,
-            subscription.plan.interval if subscription.plan else "monthly",
-        )
-    )
-
-    # Update subscription
-    subscription.status = Subscription.Status.ACTIVE
-    subscription.current_period_start = period_start
-    subscription.current_period_end = period_end
-    if subscription_code:
-        subscription.paystack_subscription_code = subscription_code
-    subscription.save()
-
-    # Extend shop access
-    if period_end:
-        subscription.shop.subscription_expires_at = period_end
-        subscription.shop.save(update_fields=["subscription_expires_at"])
-
-    # Record payment
-    reference = (
-        (data.get("transaction") or {}).get("reference")
-        or data.get("reference", "")
-    )
-    amount_kobo = data.get("amount", 0) or 0
-    if reference:
-        PaymentHistory.objects.get_or_create(
-            paystack_reference=reference,
-            defaults={
-                "shop": subscription.shop,
-                "plan": subscription.plan,
-                "amount": amount_kobo / 100,
-                "paid_at": period_start,
-            },
-        )
-
-    logger.info(
-        "invoice.payment_success activated subscription for shop=%s (period_end=%s)",
-        subscription.shop_id, period_end,
-    )
+    result = activate_subscription_from_transaction(data)
+    if result == "unresolved":
+        raise WebhookProcessingError("Could not resolve successful invoice to a local subscription")
+    logger.info("Successful invoice result: %s", result)
+    return result
 
 
 def on_invoice_update(data):
-    """Handles invoice.update — check if the invoice was paid and activate."""
-    status_val = (data.get("status") or "").lower()
-    if status_val in ("paid", "success"):
-        on_invoice_payment_success(data)
-    else:
-        logger.debug("invoice.update with status=%s, skipping", status_val)
+    """Handle Paystack's documented subscription renewal invoice event."""
+    status_value = str(data.get("status") or "").lower()
+    transaction_status = str(_transaction_payload(data).get("status") or "").lower()
+    is_paid = data.get("paid") is True or data.get("paid") == 1
+
+    if status_value in {"paid", "success"} or transaction_status == "success" or is_paid:
+        return on_invoice_payment_success(data)
+    if status_value in {"failed", "attention"}:
+        return on_payment_failed(data)
+
+    logger.debug("invoice.update with status=%s, skipping", status_value)
+    return "ignored"
 
 
 def on_payment_failed(data):
-    subscription_code = (
-        data.get("subscription_code")
-        or (data.get("subscription") or {}).get("subscription_code")
-    )
-    if not subscription_code:
-        logger.warning("invoice.payment_failed: no subscription_code in payload")
-        return
-    try:
-        subscription = Subscription.objects.get(
-            paystack_subscription_code=subscription_code
-        )
-        paid_through = _paid_through(subscription)
-        if paid_through and paid_through > timezone.now():
-            logger.info(
-                "invoice.payment_failed: keeping subscription %s active until %s",
-                subscription_code,
-                paid_through,
-            )
-            return
-        subscription.status = Subscription.Status.EXPIRED
-        subscription.save()
+    subscription = _resolve_subscription(data, plan=_resolve_plan(data))
+    if not subscription:
+        raise WebhookProcessingError("Could not resolve invoice.payment_failed")
+
+    paid_through = _paid_through(subscription)
+    if paid_through and paid_through > timezone.now():
         logger.info(
-            "invoice.payment_failed: marked subscription %s as expired",
-            subscription_code,
+            "invoice.payment_failed: keeping subscription %s active until %s",
+            subscription.paystack_subscription_code,
+            paid_through,
         )
-    except Subscription.DoesNotExist:
-        logger.warning(
-            "invoice.payment_failed: subscription_code=%s not found",
-            subscription_code,
-        )
+        return "processed"
+
+    subscription.status = Subscription.Status.EXPIRED
+    subscription.save(update_fields=["status", "updated_at"])
+    logger.info(
+        "invoice.payment_failed: marked subscription %s as expired",
+        subscription.paystack_subscription_code,
+    )
+    return "processed"

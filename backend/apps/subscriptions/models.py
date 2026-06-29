@@ -88,3 +88,31 @@ class PaymentHistory(models.Model):
 
     def __str__(self):
         return f"{self.shop.name} — ₦{self.amount} ({self.paid_at.date()})"
+
+
+class PaystackWebhookEvent(models.Model):
+    class Status(models.TextChoices):
+        RECEIVED = "received", "Received"
+        PROCESSED = "processed", "Processed"
+        IGNORED = "ignored", "Ignored"
+        FAILED = "failed", "Failed"
+
+    payload_hash = models.CharField(max_length=64, unique=True)
+    event_type = models.CharField(max_length=100, db_index=True)
+    event_key = models.CharField(max_length=200, blank=True, db_index=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.RECEIVED,
+        db_index=True,
+    )
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+    received_at = models.DateTimeField(auto_now_add=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-received_at"]
+
+    def __str__(self):
+        return f"{self.event_type} ({self.event_key or self.payload_hash[:12]})"

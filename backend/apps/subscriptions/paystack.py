@@ -2,6 +2,8 @@
 Thin wrapper around the Paystack API.
 All HTTP calls to Paystack go through here — keeps views clean.
 """
+from urllib.parse import quote
+
 import requests
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
@@ -110,6 +112,21 @@ def list_subscriptions(page=1, per_page=50):
     return resp.json()["data"]
 
 
+def fetch_subscription(subscription_code):
+    """Fetches one subscription directly by its Paystack code."""
+    code = (subscription_code or "").strip()
+    if not code:
+        raise ValueError("subscription_code is required")
+
+    resp = requests.get(
+        f"{PAYSTACK_BASE}/subscription/{quote(code, safe='')}",
+        headers=_headers(),
+        timeout=10,
+    )
+    _raise_for_status(resp)
+    return resp.json()["data"]
+
+
 def find_subscription(subscription_code=None, customer_code=None, plan_code=None, statuses=None, max_pages=10):
     """
     Finds the most relevant subscription by customer and/or plan.
@@ -117,31 +134,48 @@ def find_subscription(subscription_code=None, customer_code=None, plan_code=None
     from the identifiers we already store.
     """
     allowed_statuses = set(statuses or ["active"])
+
+    def matches(record):
+        if customer_code:
+            record_customer_code = ((record.get("customer") or {}).get("customer_code") or "").strip()
+            if record_customer_code != customer_code:
+                return False
+        if plan_code:
+            record_plan_code = ((record.get("plan") or {}).get("plan_code") or "").strip()
+            if record_plan_code != plan_code:
+                return False
+        record_status = (record.get("status") or "").strip().lower()
+        return not allowed_statuses or record_status in allowed_statuses
+
+    def result(record):
+        return {
+            "subscription_code": record.get("subscription_code") or "",
+            "email_token": record.get("email_token") or "",
+            "status": (record.get("status") or "").strip().lower(),
+            "raw": record,
+        }
+
+    if subscription_code:
+        try:
+            record = fetch_subscription(subscription_code)
+        except Exception:
+            if not customer_code:
+                raise
+        else:
+            if matches(record):
+                return result(record)
+
     per_page = 50
     for page in range(1, max_pages + 1):
-        records = list_subscriptions(page=page)
+        records = list_subscriptions(page=page, per_page=per_page)
         for record in records:
             if subscription_code:
                 record_subscription_code = (record.get("subscription_code") or "").strip()
-                if record_subscription_code != subscription_code:
+                if not customer_code and record_subscription_code != subscription_code:
                     continue
-            if customer_code:
-                record_customer_code = ((record.get("customer") or {}).get("customer_code") or "").strip()
-                if record_customer_code != customer_code:
-                    continue
-            if plan_code:
-                record_plan_code = ((record.get("plan") or {}).get("plan_code") or "").strip()
-                if record_plan_code != plan_code:
-                    continue
-            record_status = (record.get("status") or "").strip().lower()
-            if allowed_statuses and record_status not in allowed_statuses:
+            if not matches(record):
                 continue
-            return {
-                "subscription_code": record.get("subscription_code") or "",
-                "email_token": record.get("email_token") or "",
-                "status": record_status,
-                "raw": record,
-            }
+            return result(record)
         if len(records) < per_page:
             break
     return None

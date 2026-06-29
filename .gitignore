@@ -30,6 +30,7 @@ lib/
 lib64/
 docs/*
 !docs/DEVELOPMENT.md
+!docs/ARCHITECTURE_ROADMAP.md
 
 
 # ── Virtual Environments ──────────────────────────────────────────────────────
@@ -71,6 +72,7 @@ frontend/.gitignore
 # ── Test / Debug scripts ──────────────────────────────────────────────────────
 test_*.py
 test_*.json
+admin-bootstrap*.json
 
 .md/
 RAILWAY_DEPLOYMENT.md/

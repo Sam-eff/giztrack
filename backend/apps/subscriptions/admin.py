@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Plan, Subscription, PaymentHistory
+from .models import PaymentHistory, PaystackWebhookEvent, Plan, Subscription
 
 
 @admin.register(Plan)
@@ -42,6 +42,36 @@ class PaymentHistoryAdmin(admin.ModelAdmin):
     list_display = ["shop", "plan", "amount", "paystack_reference", "paid_at"]
     search_fields = ["shop__name", "paystack_reference"]
     readonly_fields = ["shop", "plan", "amount", "paystack_reference", "paid_at", "created_at"]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PaystackWebhookEvent)
+class PaystackWebhookEventAdmin(admin.ModelAdmin):
+    list_display = [
+        "event_type",
+        "event_key",
+        "status",
+        "attempts",
+        "received_at",
+        "processed_at",
+    ]
+    list_filter = ["status", "event_type"]
+    search_fields = ["event_key", "payload_hash"]
+    readonly_fields = [
+        "payload_hash",
+        "event_type",
+        "event_key",
+        "status",
+        "attempts",
+        "last_error",
+        "received_at",
+        "processed_at",
+    ]
 
     def has_add_permission(self, request):
         return False

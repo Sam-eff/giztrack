@@ -24,6 +24,13 @@ SCHEDULES = [
         "minutes": 0,
         "cron": "0 8 * * *",  # 8:00 AM daily
     },
+    {
+        "name": "reconcile-paystack-subscriptions",
+        "func": "apps.subscriptions.tasks.reconcile_due_paystack_subscriptions",
+        "schedule_type": Schedule.CRON,
+        "minutes": 0,
+        "cron": "*/30 * * * *",
+    },
 ]
 
 

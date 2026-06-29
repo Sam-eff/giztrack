@@ -16,6 +16,7 @@ EXEMPT_PATHS = [
     "/api/v1/subscriptions/webhook/",    # Paystack webhook must always reach us
     "/api/v1/subscriptions/plans/",      # Users need to see plans even when expired
     "/api/v1/subscriptions/initialize/", # Users need to be able to pay
+    "/api/v1/subscriptions/sync/",       # Locked users need to refresh provider state
     "/api/v1/subscriptions/callback/",   # Paystack callback redirect
     "/api/v1/subscriptions/current/",    # Frontend polls this to check subscription state
     "/admin/",
