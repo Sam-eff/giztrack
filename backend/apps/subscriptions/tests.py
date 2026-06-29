@@ -1081,7 +1081,7 @@ class PaystackReconciliationCommandTests(APITestCase):
     @patch(
         "apps.subscriptions.management.commands.backfill_paystack_payment.paystack.verify_transaction"
     )
-    def test_backfill_paystack_payment_creates_verified_history(
+    def test_backfill_paystack_payment_infers_shop_from_customer_code(
         self,
         mock_verify_transaction,
     ):
@@ -1102,7 +1102,6 @@ class PaystackReconciliationCommandTests(APITestCase):
 
         call_command(
             "backfill_paystack_payment",
-            shop_id=self.shop.id,
             reference="ref_backfilled_renewal",
         )
 
@@ -1113,6 +1112,84 @@ class PaystackReconciliationCommandTests(APITestCase):
         self.assertEqual(payment.plan, self.plan)
         self.assertEqual(payment.amount, Decimal("3000"))
         self.assertEqual(payment.paid_at, paid_at)
+
+    @patch(
+        "apps.subscriptions.management.commands.backfill_paystack_payment.paystack.verify_transaction"
+    )
+    def test_backfill_paystack_payment_infers_shop_from_customer_email(
+        self,
+        mock_verify_transaction,
+    ):
+        paid_at = timezone.now()
+        mock_verify_transaction.return_value = {
+            "status": "success",
+            "reference": "ref_email_backfill",
+            "amount": 300000,
+            "paid_at": paid_at.isoformat(),
+            "customer": {
+                "email": self.shop.email,
+            },
+            "plan_object": {
+                "plan_code": self.plan.paystack_plan_code,
+            },
+        }
+
+        call_command(
+            "backfill_paystack_payment",
+            reference="ref_email_backfill",
+        )
+
+        payment = PaymentHistory.objects.get(
+            paystack_reference="ref_email_backfill"
+        )
+        self.assertEqual(payment.shop, self.shop)
+        self.assertEqual(payment.amount, Decimal("3000"))
+
+    @patch(
+        "apps.subscriptions.management.commands.backfill_paystack_payment.paystack.verify_transaction"
+    )
+    def test_backfill_paystack_payment_rejects_ambiguous_customer_email(
+        self,
+        mock_verify_transaction,
+    ):
+        shared_email = "shared-billing@example.com"
+        CustomUser.objects.create_user(
+            email=shared_email,
+            password="StrongPass123!",
+            first_name="Recovery",
+            last_name="Admin",
+            shop=self.shop,
+            role=Role.ADMIN,
+        )
+        other_shop = Shop.objects.create(
+            name="Other Recovery Shop",
+            owner_name="Other Owner",
+            email=shared_email,
+            phone="08087654321",
+        )
+        Subscription.objects.create(
+            shop=other_shop,
+            plan=self.plan,
+            status=Subscription.Status.EXPIRED,
+        )
+        mock_verify_transaction.return_value = {
+            "status": "success",
+            "reference": "ref_ambiguous_email",
+            "amount": 300000,
+            "paid_at": timezone.now().isoformat(),
+            "customer": {
+                "email": shared_email,
+            },
+        }
+
+        with self.assertRaisesMessage(
+            CommandError,
+            "More than one subscription matches the shop email.",
+        ):
+            call_command(
+                "backfill_paystack_payment",
+                reference="ref_ambiguous_email",
+            )
 
     @patch(
         "apps.subscriptions.management.commands.backfill_paystack_payment.paystack.verify_transaction"

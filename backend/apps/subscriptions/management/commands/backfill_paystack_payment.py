@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db.models import Q
 
 from apps.subscriptions import paystack
 from apps.subscriptions.models import PaymentHistory, Subscription
@@ -11,7 +12,9 @@ class Command(BaseCommand):
     help = "Verify one successful Paystack transaction and backfill its payment history."
 
     def add_arguments(self, parser):
-        parser.add_argument("--shop-id", type=int, required=True)
+        selector = parser.add_mutually_exclusive_group()
+        selector.add_argument("--shop-id", type=int)
+        selector.add_argument("--shop-email")
         parser.add_argument("--reference", required=True)
         parser.add_argument(
             "--dry-run",
@@ -20,13 +23,6 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        try:
-            subscription = Subscription.objects.select_related("shop", "plan").get(
-                shop_id=options["shop_id"]
-            )
-        except Subscription.DoesNotExist as exc:
-            raise CommandError("Subscription not found for this shop.") from exc
-
         reference = options["reference"].strip()
         if not reference:
             raise CommandError("A Paystack transaction reference is required.")
@@ -37,6 +33,7 @@ class Command(BaseCommand):
 
         customer = _as_dict(transaction.get("customer"))
         metadata = _as_dict(transaction.get("metadata"))
+        subscription = self._resolve_subscription(options, customer, metadata)
         transaction_customer_code = (customer.get("customer_code") or "").strip()
         transaction_email = (customer.get("email") or "").strip().lower()
         known_emails = {
@@ -128,3 +125,74 @@ class Command(BaseCommand):
                 f"amount={amount} paid_at={paid_at}"
             )
         )
+
+    def _resolve_subscription(self, options, customer, metadata):
+        subscriptions = Subscription.objects.select_related("shop", "plan")
+
+        if options.get("shop_id"):
+            try:
+                return subscriptions.get(shop_id=options["shop_id"])
+            except Subscription.DoesNotExist as exc:
+                raise CommandError("Subscription not found for this shop.") from exc
+
+        if options.get("shop_email"):
+            return self._subscription_for_email(
+                subscriptions,
+                options["shop_email"],
+                required=True,
+            )
+
+        metadata_shop_id = metadata.get("shop_id")
+        if str(metadata_shop_id or "").isdigit():
+            match = self._single_match(
+                subscriptions.filter(shop_id=int(metadata_shop_id)),
+                "Paystack transaction metadata",
+            )
+            if match:
+                return match
+
+        customer_code = (customer.get("customer_code") or "").strip()
+        if customer_code:
+            match = self._single_match(
+                subscriptions.filter(paystack_customer_code=customer_code),
+                "Paystack customer code",
+            )
+            if match:
+                return match
+
+        customer_email = (customer.get("email") or "").strip()
+        if customer_email:
+            match = self._subscription_for_email(
+                subscriptions,
+                customer_email,
+                required=False,
+            )
+            if match:
+                return match
+
+        raise CommandError(
+            "Could not identify the shop from this Paystack transaction. "
+            "Use --shop-email to select it explicitly."
+        )
+
+    def _subscription_for_email(self, subscriptions, email, *, required):
+        email = (email or "").strip()
+        match = self._single_match(
+            subscriptions.filter(
+                Q(shop__email__iexact=email)
+                | Q(shop__users__email__iexact=email)
+            ).distinct(),
+            "shop email",
+        )
+        if match or not required:
+            return match
+        raise CommandError("Subscription not found for this shop email.")
+
+    def _single_match(self, queryset, source):
+        matches = list(queryset[:2])
+        if len(matches) > 1:
+            raise CommandError(
+                f"More than one subscription matches the {source}. "
+                "Use --shop-id to select one explicitly."
+            )
+        return matches[0] if matches else None
