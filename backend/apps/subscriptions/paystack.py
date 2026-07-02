@@ -100,6 +100,38 @@ def verify_transaction(reference):
     return resp.json()["data"]
 
 
+def list_transactions(
+    page=1,
+    per_page=50,
+    customer_id=None,
+    status=None,
+    date_from=None,
+    date_to=None,
+    amount=None,
+):
+    """Lists transactions on the integration, optionally filtered by customer."""
+    params = {"page": page, "perPage": per_page}
+    if customer_id:
+        params["customer"] = customer_id
+    if status:
+        params["status"] = status
+    if date_from:
+        params["from"] = date_from
+    if date_to:
+        params["to"] = date_to
+    if amount is not None:
+        params["amount"] = amount
+
+    resp = requests.get(
+        f"{PAYSTACK_BASE}/transaction",
+        headers=_headers(),
+        params=params,
+        timeout=10,
+    )
+    _raise_for_status(resp)
+    return resp.json()["data"]
+
+
 def list_subscriptions(page=1, per_page=50, customer_id=None):
     """Lists subscriptions on the integration."""
     params = {"page": page, "perPage": per_page}

@@ -68,13 +68,14 @@ class Command(BaseCommand):
                 continue
 
             self.stdout.write(
-                "Reconciled shop=%s outcome=%s status=%s period_end=%s subscription_code=%s%s"
+                "Reconciled shop=%s outcome=%s status=%s period_end=%s subscription_code=%s payment_history=%s%s"
                 % (
                     subscription.shop_id,
                     result["outcome"],
                     result.get("status", ""),
                     result.get("period_end", ""),
                     result.get("subscription_code", ""),
+                    result.get("payment_history", {}).get("outcome", ""),
                     " (dry run)" if options["dry_run"] else "",
                 )
             )

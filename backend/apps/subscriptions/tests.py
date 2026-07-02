@@ -965,6 +965,120 @@ class PaystackReconciliationCommandTests(APITestCase):
         self.assertEqual(self.shop.subscription_expires_at, next_payment_date)
         self.assertIn("reconciled 1", stdout.getvalue())
 
+    @patch("apps.subscriptions.reconciliation.paystack.list_transactions")
+    @patch("apps.subscriptions.reconciliation.paystack.find_subscription")
+    def test_reconcile_paystack_subscriptions_backfills_missing_payment_history(
+        self,
+        mock_find_subscription,
+        mock_list_transactions,
+    ):
+        previous_period_end = self.subscription.current_period_end
+        next_payment_date = timezone.now() + timedelta(days=28)
+        paid_at = previous_period_end + timedelta(minutes=3)
+        mock_find_subscription.return_value = {
+            "subscription_code": "SUB_recovered",
+            "email_token": "EMAIL_recovered",
+            "status": "active",
+            "raw": {
+                "customer": {"id": 181873746},
+                "next_payment_date": next_payment_date.isoformat(),
+            },
+        }
+        mock_list_transactions.return_value = [
+            {
+                "status": "success",
+                "reference": "ref_recovered_renewal",
+                "amount": 300000,
+                "paid_at": paid_at.isoformat(),
+                "plan_object": {"plan_code": self.plan.paystack_plan_code},
+            }
+        ]
+
+        call_command(
+            "reconcile_paystack_subscriptions",
+            shop_id=self.shop.id,
+        )
+
+        payment = PaymentHistory.objects.get(
+            paystack_reference="ref_recovered_renewal"
+        )
+        self.assertEqual(payment.shop, self.shop)
+        self.assertEqual(payment.plan, self.plan)
+        self.assertEqual(payment.amount, Decimal("3000"))
+        self.assertEqual(payment.paid_at, paid_at)
+        mock_list_transactions.assert_called_once()
+        self.assertEqual(
+            mock_list_transactions.call_args.kwargs["customer_id"],
+            181873746,
+        )
+        self.assertEqual(
+            mock_list_transactions.call_args.kwargs["status"],
+            "success",
+        )
+        self.assertEqual(
+            mock_list_transactions.call_args.kwargs["amount"],
+            300000,
+        )
+
+    @patch("apps.subscriptions.reconciliation.paystack.list_transactions")
+    @patch("apps.subscriptions.reconciliation.paystack.find_subscription")
+    def test_reconcile_unchanged_subscription_backfills_missing_payment_history(
+        self,
+        mock_find_subscription,
+        mock_list_transactions,
+    ):
+        current_period_start = timezone.now() - timedelta(days=2)
+        current_period_end = timezone.now() + timedelta(days=28)
+        Subscription.objects.filter(pk=self.subscription.pk).update(
+            status=Subscription.Status.ACTIVE,
+            paystack_subscription_code="SUB_already_recovered",
+            paystack_email_token="EMAIL_already_recovered",
+            current_period_start=current_period_start,
+            current_period_end=current_period_end,
+        )
+        Shop.objects.filter(pk=self.shop.pk).update(
+            subscription_expires_at=current_period_end,
+        )
+        self.subscription.refresh_from_db()
+        paid_at = current_period_start + timedelta(minutes=4)
+        mock_find_subscription.return_value = {
+            "subscription_code": "SUB_already_recovered",
+            "email_token": "EMAIL_already_recovered",
+            "status": "active",
+            "raw": {
+                "customer": {
+                    "id": 181873746,
+                    "customer_code": self.subscription.paystack_customer_code,
+                },
+                "next_payment_date": current_period_end.isoformat(),
+            },
+        }
+        mock_list_transactions.return_value = [
+            {
+                "status": "success",
+                "reference": "ref_already_recovered_renewal",
+                "amount": 300000,
+                "paid_at": paid_at.isoformat(),
+                "plan": {"plan_code": self.plan.paystack_plan_code},
+            }
+        ]
+        stdout = StringIO()
+
+        call_command(
+            "reconcile_paystack_subscriptions",
+            shop_id=self.shop.id,
+            stdout=stdout,
+        )
+
+        self.assertTrue(
+            PaymentHistory.objects.filter(
+                paystack_reference="ref_already_recovered_renewal",
+                shop=self.shop,
+            ).exists()
+        )
+        self.assertIn("outcome=unchanged", stdout.getvalue())
+        self.assertIn("payment_history=created", stdout.getvalue())
+
     @patch("apps.subscriptions.reconciliation.paystack.find_subscription")
     def test_reconcile_paystack_subscriptions_can_match_by_subscription_code(self, mock_find_subscription):
         next_payment_date = timezone.now() + timedelta(days=28)
