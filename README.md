@@ -1,84 +1,79 @@
-<div align="center">
-  <h1>Giztrack</h1>
-  <p><strong>Point-of-sale, inventory, procurement, and repair-shop management for tech repair businesses.</strong></p>
-</div>
+# Giztrack
 
----
+Giztrack is a business management platform for tech-driven shops and growing
+retail teams. It brings sales, inventory, customers, staff access, expenses,
+reports, repairs, and subscription billing into one focused workspace.
 
-Giztrack is a full-stack SaaS platform for gadget and electronics repair shops.
-It helps shop owners manage sales, stock, serialized devices, repairs, customers,
-suppliers, staff roles, analytics, and subscription access from one dashboard.
+The product is designed for businesses that need a clear view of stock, revenue,
+customers, operations, and day-to-day shop activity without jumping between
+separate tools.
 
-The application is built around a multi-tenant model, so each registered shop has
-its own isolated data, users, inventory, reports, and billing state.
+## What Giztrack Does
 
-## Core Features
+- Manages point-of-sale records, payments, receipts, and profit visibility
+- Tracks products, stock levels, suppliers, categories, and serialized devices
+- Stores customer records linked to purchases, balances, and service history
+- Supports staff roles for admins, technicians, and shop users
+- Organizes repair and service jobs from intake to completion
+- Provides reports for sales, inventory, expenses, customers, and operations
+- Handles subscription access and billing through Paystack
+- Supports installable web-app behavior for desktop and mobile use
 
-- Multi-tenant shop accounts with scoped business data
-- Point of sale with receipt-ready sales records and payment tracking
-- Inventory management with stock levels, categories, suppliers, and product images
-- Serialized unit tracking for IMEI/serial-number devices
-- Repair ticket workflow from intake through collection
-- Customer directory linked to purchases and repairs
-- Supplier management and purchase orders
-- Analytics for revenue, profit, expenses, stock, repairs, and customers
-- Role-based access for admins, staff, and technicians
-- Subscription billing integration with Paystack
-- Background tasks with Django Q2
-- Progressive Web App support for installable mobile/desktop use
+## Technology Overview
 
-## Tech Stack
+Giztrack is built as a full-stack web application.
 
-| Area | Stack |
+| Layer | Technology |
 | --- | --- |
-| Frontend | React, TypeScript, Vite, Tailwind CSS, React Router, Axios |
-| Backend | Python 3.12, Django, Django REST Framework |
-| Database | PostgreSQL for Docker/production, SQLite-supported local fallback |
-| Async jobs | Django Q2 |
-| Media/static | Whitenoise, Cloudinary-ready media storage, Pillow |
-| Observability | Sentry-ready frontend and backend configuration |
-| Infrastructure | Docker, Docker Compose, Nginx, Gunicorn |
+| Frontend | React, TypeScript, Vite, Tailwind CSS |
+| Backend | Django, Django REST Framework |
+| Database | PostgreSQL |
+| Background Jobs | Django Q2 |
+| Payments | Paystack |
+| Runtime | Gunicorn, Docker-ready deployment |
 
-## Repository Map
+The backend follows a modular monolith structure: each business area lives in a
+separate Django app, while the product remains simple to deploy and operate as
+one main backend service.
 
-- `frontend/` - React + Vite application served by Vite in dev and Nginx in production-like Docker.
-- `backend/` - Django API, business apps, authentication, reports, and background jobs.
-- `docker-compose.dev.yml` - hot-reload local development stack.
-- `docker-compose.yml` - production-like local stack with built frontend and Gunicorn backend.
-- `docs/` - development notes for local setup and troubleshooting.
-- `PRODUCTION.md` - production rollout checklist and deployment direction.
+## Repository Structure
+
+```text
+backend/      Django API, domain logic, billing, reports, and background jobs
+frontend/     React application used by shop owners and staff
+docs/         Internal engineering notes and development references
+```
 
 ## Local Development
 
-For setup commands, environment variables, Docker workflows, and troubleshooting,
-see [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md).
-
-Quick start:
+Create environment files from the examples:
 
 ```bash
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
+```
+
+Run the development stack:
+
+```bash
 docker compose -f docker-compose.dev.yml up --build
 ```
 
-Development URLs:
+Useful local URLs:
 
-- Frontend: `http://localhost:5173/`
-- Backend API: `http://localhost:8000/api/v1/health/`
+```text
+Frontend: http://localhost:5173/
+Backend:  http://localhost:8000/api/v1/health/
+```
 
-## Documentation
+## Project Status
 
-- [Development Guide](./docs/DEVELOPMENT.md)
-- [Architecture Roadmap](./docs/ARCHITECTURE_ROADMAP.md)
-- [Production Rollout](./PRODUCTION.md)
+Giztrack is an actively developed SaaS product. The current focus is reliability
+around billing, reporting accuracy, shop operations, and a smoother experience
+for everyday business workflows.
 
-## Security Notes
+## Security
 
-Do not commit real `.env` files, API keys, SMTP credentials, Paystack keys, or
-production secrets. The committed `.env.example` files are templates only.
-
----
-
-<div align="center">
-  <p>Built for tech repair shops that need stock, sales, and repairs in one place.</p>
-</div>
+Do not commit real credentials, API keys, database URLs, Paystack secrets, SMTP
+credentials, or production environment files. Use the provided example files as
+templates only.
